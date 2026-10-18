@@ -224,4 +224,42 @@ Java_com_vban_receptor_native_NativeVbanEngine_getTelemetry(
     );
 }
 
+/**
+ * Configures target audio latency / buffer watermark in milliseconds.
+ */
+JNIEXPORT jboolean JNICALL
+Java_com_vban_receptor_native_NativeVbanEngine_setTargetLatencyMs(
+    JNIEnv* /*env*/, jobject /*thiz*/, jfloat targetMs) {
+    bool ok = vban::VbanEngine::getInstance().setTargetLatencyMs(static_cast<float>(targetMs));
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+/**
+ * Polls latest real-time FFT spectrum bands for 60 FPS UI visualizer.
+ */
+JNIEXPORT jboolean JNICALL
+Java_com_vban_receptor_native_NativeVbanEngine_getSpectrumBands(
+    JNIEnv* env, jobject /*thiz*/, jfloatArray outArray) {
+    if (!env || !outArray) {
+        return JNI_FALSE;
+    }
+
+    jsize len = env->GetArrayLength(outArray);
+    if (len <= 0) {
+        return JNI_FALSE;
+    }
+
+    jfloat* elems = env->GetFloatArrayElements(outArray, nullptr);
+    if (!elems) {
+        return JNI_FALSE;
+    }
+
+    bool hasNew = vban::VbanEngine::getInstance().getLatestFftBands(
+        elems, static_cast<size_t>(len)
+    );
+
+    env->ReleaseFloatArrayElements(outArray, elems, 0);
+    return hasNew ? JNI_TRUE : JNI_FALSE;
+}
+
 } // extern "C"

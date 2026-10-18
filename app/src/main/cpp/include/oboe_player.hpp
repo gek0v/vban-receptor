@@ -10,6 +10,7 @@
 
 #include "spsc_ring_buffer.hpp"
 #include "drift_compensator.hpp"
+#include "fft_analyzer.hpp"
 
 namespace vban {
 
@@ -131,6 +132,10 @@ public:
     [[nodiscard]] int32_t getActualSampleRate() const noexcept;
     [[nodiscard]] int32_t getActualChannelCount() const noexcept;
 
+    bool getLatestFftBands(float* outBands, size_t numBands) noexcept {
+        return m_fftAnalyzer.getLatestBands(outBands, numBands);
+    }
+
 private:
     bool openStreamLocked();
     void closeStreamLocked();
@@ -138,6 +143,7 @@ private:
 
     SpscRingBuffer<float, VBAN_RING_BUFFER_CAPACITY>& m_ringBuffer;
     DriftCompensator& m_compensator;
+    FftAnalyzer m_fftAnalyzer;
 
     std::shared_ptr<oboe::AudioStream> m_stream;
     mutable std::mutex m_streamMutex; // Control-plane mutex only (never touched by onAudioReady)

@@ -94,6 +94,12 @@ object NativeVbanEngine {
     private val _telemetry = MutableStateFlow(NativeTelemetry())
     val telemetry: StateFlow<NativeTelemetry> = _telemetry.asStateFlow()
 
+    private val _latencyProfile = MutableStateFlow(com.vban.receptor.audio.LatencyProfile.BALANCED)
+    val latencyProfile: StateFlow<com.vban.receptor.audio.LatencyProfile> = _latencyProfile.asStateFlow()
+
+    private val _spectrumBands = MutableStateFlow(FloatArray(64))
+    val spectrumBands: StateFlow<FloatArray> = _spectrumBands.asStateFlow()
+
     private var telemetryPollingJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Default)
 
@@ -130,6 +136,12 @@ object NativeVbanEngine {
 
     @JvmStatic
     private external fun getTelemetry(): NativeTelemetry?
+
+    @JvmStatic
+    private external fun setTargetLatencyMs(targetMs: Float): Boolean
+
+    @JvmStatic
+    private external fun getSpectrumBands(outArray: FloatArray): Boolean
 
     // =========================================================================
     // Public API
@@ -187,6 +199,7 @@ object NativeVbanEngine {
         val started = startReceiver(listenIp, port, streamName, deviceId)
         if (started) {
             _isRunning.value = true
+            setTargetLatencyMs(_latencyProfile.value.targetLatencyMs)
             startTelemetryPolling(pollIntervalMs)
             Log.i(TAG, "VBAN Receiver started on $listenIp:$port, stream='$streamName', device=$deviceId")
         } else {
@@ -223,6 +236,17 @@ object NativeVbanEngine {
     }
 
     /**
+     * Sets target latency profile (Ultra-Low, Balanced, Anti-Jitter).
+     */
+    fun setLatencyProfile(profile: com.vban.receptor.audio.LatencyProfile) {
+        _latencyProfile.value = profile
+        if (isLibraryLoaded.get()) {
+            setTargetLatencyMs(profile.targetLatencyMs)
+            Log.i(TAG, "Latency profile set to ${profile.displayName} (${profile.targetLatencyMs} ms)")
+        }
+    }
+
+    /**
      * Synchronously queries a single telemetry snapshot without blocking.
      */
     fun pollTelemetrySnapshot(): NativeTelemetry {
@@ -238,12 +262,16 @@ object NativeVbanEngine {
 
     private fun startTelemetryPolling(pollIntervalMs: Long) {
         telemetryPollingJob?.cancel()
+        val spectrumBuffer = FloatArray(64)
         telemetryPollingJob = scope.launch {
             while (isActive && _isRunning.value) {
                 try {
                     val snapshot = getTelemetry()
                     if (snapshot != null) {
                         _telemetry.value = snapshot
+                    }
+                    if (getSpectrumBands(spectrumBuffer)) {
+                        _spectrumBands.value = spectrumBuffer.copyOf()
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Error polling telemetry: ${e.message}")

@@ -26,6 +26,7 @@ add_library(vban_engine SHARED
     src/oboe_player.cpp
     src/vban_receiver.cpp
     src/jni_bridge.cpp
+    src/fft_analyzer.cpp
 )
 
 # Export include directories

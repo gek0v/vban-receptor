@@ -43,17 +43,27 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import com.vban.receptor.audio.LatencyProfile
 import com.vban.receptor.native.NativeTelemetry
 import com.vban.receptor.native.NativeVbanEngine
+import com.vban.receptor.network.DiscoveredStream
+import com.vban.receptor.network.VbanDiscoveryManager
 import com.vban.receptor.ui.components.AudioOutputDeviceItem
 import com.vban.receptor.ui.components.BufferOccupancyGauge
 import com.vban.receptor.ui.components.DeviceSelector
+import com.vban.receptor.ui.components.DiscoveredStreamsSheet
+import com.vban.receptor.ui.components.LatencyProfileSelector
+import com.vban.receptor.ui.components.SpectrumAnalyzer
 import com.vban.receptor.ui.components.StereoVuMeter
 import java.util.Locale
 
 /**
  * Main Audiophile Dashboard Screen for VBAN Receptor.
  */
+@androidx.compose.material3.ExperimentalMaterial3Api
 @Composable
 fun DashboardScreen(
     onStartService: (ip: String, port: Int, stream: String, deviceId: Int) -> Unit,
@@ -63,6 +73,22 @@ fun DashboardScreen(
 ) {
     val isRunning by NativeVbanEngine.isRunning.collectAsState()
     val telemetry by NativeVbanEngine.telemetry.collectAsState()
+    val latencyProfile by NativeVbanEngine.latencyProfile.collectAsState()
+    val spectrumBands by NativeVbanEngine.spectrumBands.collectAsState()
+
+    val discoveryManager = remember { VbanDiscoveryManager() }
+    val discoveredStreams by discoveryManager.discoveredStreams.collectAsState()
+    val isScanning by discoveryManager.isScanning.collectAsState()
+    var showDiscoveredSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        discoveryManager.start()
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            discoveryManager.stop()
+        }
+    }
 
     var listenIp by remember { mutableStateOf("0.0.0.0") }
     var portText by remember { mutableStateOf("6980") }
@@ -95,6 +121,8 @@ fun DashboardScreen(
                 streamName = streamName,
                 onStreamNameChanged = { streamName = it },
                 isRunning = isRunning,
+                discoveredCount = discoveredStreams.size,
+                onOpenDiscovery = { showDiscoveredSheet = true },
                 onTogglePlayback = {
                     if (isRunning) {
                         onStopService()
@@ -115,11 +143,26 @@ fun DashboardScreen(
                 }
             )
 
+            // Adaptive Latency / Jitter Buffer Profile Selector
+            LatencyProfileSelector(
+                selectedProfile = latencyProfile,
+                onProfileSelected = { NativeVbanEngine.setLatencyProfile(it) },
+                enabled = true
+            )
+
             // 60 FPS Stereo VU Meter
             StereoVuMeter(
                 leftLinear = telemetry.peakLevelLeft,
                 rightLinear = telemetry.peakLevelRight,
                 isRunning = isRunning
+            )
+
+            // 60 FPS Real-Time FFT Spectral Analyzer
+            SpectrumAnalyzer(
+                magnitudes = spectrumBands,
+                bandCount = 64,
+                isRunning = isRunning,
+                sampleRate = if (telemetry.sampleRate > 0) telemetry.sampleRate else 48000
             )
 
             // Buffer Watermark Gauge & Stream Telemetry
@@ -140,6 +183,21 @@ fun DashboardScreen(
                     modifier = Modifier.weight(1f)
                 )
             }
+        }
+
+        // Zero-Config Discovered Streams Bottom Sheet
+        if (showDiscoveredSheet) {
+            DiscoveredStreamsSheet(
+                streams = discoveredStreams,
+                onStreamSelected = { stream ->
+                    listenIp = stream.sourceIp
+                    portText = stream.port.toString()
+                    streamName = stream.streamName
+                    showDiscoveredSheet = false
+                },
+                onDismissRequest = { showDiscoveredSheet = false },
+                isScanning = isScanning
+            )
         }
     }
 }
@@ -193,6 +251,8 @@ private fun ConnectionConfigCard(
     streamName: String,
     onStreamNameChanged: (String) -> Unit,
     isRunning: Boolean,
+    discoveredCount: Int = 0,
+    onOpenDiscovery: () -> Unit = {},
     onTogglePlayback: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -202,13 +262,38 @@ private fun ConnectionConfigCard(
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "NETWORK STREAM CONFIGURATION",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.1.sp
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "NETWORK STREAM CONFIGURATION",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.1.sp
+                )
+
+                FilterChip(
+                    selected = discoveredCount > 0,
+                    onClick = onOpenDiscovery,
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Sensors,
+                            contentDescription = "Scan",
+                            modifier = Modifier.size(16.dp),
+                            tint = if (discoveredCount > 0) Color(0xFF00E5FF) else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    label = {
+                        Text(
+                            text = if (discoveredCount > 0) "$discoveredCount detectados" else "Escanear Red",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                )
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 

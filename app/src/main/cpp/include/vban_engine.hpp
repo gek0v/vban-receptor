@@ -125,6 +125,19 @@ public:
     NativeTelemetry getTelemetry() const noexcept;
 
     /**
+     * Configures target audio latency / buffer watermark in milliseconds.
+     */
+    bool setTargetLatencyMs(float latencyMs);
+
+    /**
+     * Polls latest real-time FFT spectrum bands for 60 FPS UI visualizer.
+     * @param outBands Destination array receiving normalized magnitudes [0.0f, 1.0f].
+     * @param numBands Band count (typically 32 or 64).
+     * @return true if fresh FFT snapshot was returned.
+     */
+    bool getLatestFftBands(float* outBands, size_t numBands) noexcept;
+
+    /**
      * Processes an incoming raw VBAN network datagram:
      * Validates header, dequantizes payload to Float32, updates peak telemetry,
      * and enqueues frames into the lock-free SPSC circular ring buffer.

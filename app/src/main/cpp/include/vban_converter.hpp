@@ -87,6 +87,8 @@ enum class VbanAudioFormat : uint8_t {
 
 /**
  * Converts PCM 16-bit signed LE bytes to normalized Float32 [-1.0f, +1.0f].
+ * Dispatches to ARM NEON SIMD vectorization on supported platforms,
+ * or optimized scalar fallback on x86/other architectures.
  * @param src Pointer to raw 16-bit PCM bytes (requires at least totalSamples * 2 bytes).
  * @param dst Pointer to destination float buffer (requires at least totalSamples floats).
  * @param totalSamples Total number of samples (channels * frames).
@@ -95,6 +97,8 @@ void convertInt16ToFloat(const uint8_t* __restrict src, float* __restrict dst, s
 
 /**
  * Converts PCM 24-bit packed signed LE bytes (3 bytes per sample) to Float32 [-1.0f, +1.0f].
+ * Dispatches to ARM NEON SIMD vectorization on supported platforms,
+ * or optimized scalar fallback on x86/other architectures.
  * @param src Pointer to raw 24-bit packed bytes (requires at least totalSamples * 3 bytes).
  * @param dst Pointer to destination float buffer (requires at least totalSamples floats).
  * @param totalSamples Total number of samples (channels * frames).
@@ -116,6 +120,32 @@ void convertInt32ToFloat(const uint8_t* __restrict src, float* __restrict dst, s
  * @param totalSamples Total number of samples (channels * frames).
  */
 void convertFloat32Sanitized(const uint8_t* __restrict src, float* __restrict dst, size_t totalSamples) noexcept;
+
+/**
+ * Scalar reference oracle implementations for bit-exactness verification and benchmarking.
+ */
+void convertInt16ToFloatScalar(const uint8_t* __restrict src, float* __restrict dst, size_t totalSamples) noexcept;
+void convertInt24ToFloatScalar(const uint8_t* __restrict src, float* __restrict dst, size_t totalSamples) noexcept;
+void calculatePeakLevelsStereoScalar(
+    const float* __restrict interleaved,
+    size_t numFrames,
+    float& peakLeft,
+    float& peakRight
+) noexcept;
+
+#if defined(__ARM_NEON) || defined(__aarch64__)
+/**
+ * ARM NEON SIMD vectorized implementations.
+ */
+void convertInt16ToFloatNeon(const uint8_t* __restrict src, float* __restrict dst, size_t totalSamples) noexcept;
+void convertInt24ToFloatNeon(const uint8_t* __restrict src, float* __restrict dst, size_t totalSamples) noexcept;
+void calculatePeakLevelsStereoNeon(
+    const float* __restrict interleaved,
+    size_t numFrames,
+    float& peakLeft,
+    float& peakRight
+) noexcept;
+#endif
 
 // ==============================================================================
 // 5. C++20 std::span Safe Overloads

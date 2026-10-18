@@ -331,4 +331,18 @@ bool VbanEngine::processPacket(const uint8_t* buffer, size_t size) {
     return true;
 }
 
+bool VbanEngine::setTargetLatencyMs(float latencyMs) {
+    const uint32_t currentRate = m_currentSampleRate.load(std::memory_order_relaxed);
+    compensator_.setTargetLatencyMs(latencyMs, currentRate > 0 ? currentRate : 48000);
+    LOGI("VbanEngine target latency set to %.1f ms (rate %u Hz)", latencyMs, currentRate);
+    return true;
+}
+
+bool VbanEngine::getLatestFftBands(float* outBands, size_t numBands) noexcept {
+    if (player_) {
+        return player_->getLatestFftBands(outBands, numBands);
+    }
+    return false;
+}
+
 } // namespace vban

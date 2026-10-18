@@ -105,8 +105,9 @@ bool OboePlayer::reconfigure(uint32_t sampleRate, uint16_t channels, int32_t dev
     m_config.deviceId = deviceId;
     m_activeChannels.store(channels, std::memory_order_release);
 
-    // 3. Reconfigure compensator
+    // 3. Reconfigure compensator & FFT analyzer
     m_compensator.reconfigure(sampleRate, channels);
+    m_fftAnalyzer.configure(sampleRate);
 
     // 4. Open and start new stream
     if (!openStreamLocked()) {
@@ -239,6 +240,13 @@ oboe::DataCallbackResult OboePlayer::onAudioReady(oboe::AudioStream* /*stream*/,
     m_peakLeft.store(std::max(maxL, prevL * decayFactor), std::memory_order_relaxed);
     m_peakRight.store(std::max(maxR, prevR * decayFactor), std::memory_order_relaxed);
     m_framesRendered.fetch_add(static_cast<uint64_t>(numFrames), std::memory_order_relaxed);
+
+    // Feed real-time FFT spectral visualizer (lock-free, zero-alloc)
+    if (channels >= 2) {
+        m_fftAnalyzer.pushStereo(outBuffer, static_cast<size_t>(numFrames));
+    } else {
+        m_fftAnalyzer.pushSamples(outBuffer, static_cast<size_t>(numFrames), 1);
+    }
 
     return oboe::DataCallbackResult::Continue;
 }
