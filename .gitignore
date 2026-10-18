@@ -1,0 +1,14 @@
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/app/build
+/build_native_test
+/native_tests/build
+.cxx
+*.obj
+*.exe
+*.o
+*.a
