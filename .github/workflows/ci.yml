@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  # ============================================================================
+  # 1. Native C++ Tests (Ubuntu & Windows)
+  # ============================================================================
+  native-tests:
+    name: Native C++ Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -B build_native_test -S native_tests -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Native Tests
+        run: cmake --build build_native_test --config Release
+
+      - name: Run CTest Suite
+        run: ctest --test-dir build_native_test -C Release --output-on-failure
+
+  # ============================================================================
+  # 2. Python End-to-End Verification Suite (84 Tests)
+  # ============================================================================
+  python-e2e-tests:
+    name: Python E2E Verification Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run E2E Test Suite
+        run: python e2e_tests/run_tests.py
+
+  # ============================================================================
+  # 3. Android JVM Tests & Debug APK Build
+  # ============================================================================
+  android-build:
+    name: Android Build & Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26b
+          link-to-sdk: true
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
+
+      - name: Run Android JVM Unit Tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Assemble Debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vban-receptor-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
