@@ -19,6 +19,7 @@ import com.vban.receptor.ui.DashboardScreen
 import com.vban.receptor.ui.components.AudioOutputDeviceItem
 import com.vban.receptor.ui.theme.VbanReceptorTheme
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
 
     private lateinit var bitPerfectController: BitPerfectController

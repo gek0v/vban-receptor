@@ -198,20 +198,37 @@ TEST_CASE("fft_analyzer_sine_10khz_accuracy") {
 }
 
 // ==============================================================================
-// 5. Nyquist Frequency (24 kHz) Accuracy Test
+// 5. High-Treble (21 kHz) and Nyquist (24 kHz) Accuracy Test
 // ==============================================================================
-TEST_CASE("fft_analyzer_nyquist_accuracy") {
+TEST_CASE("fft_analyzer_high_treble_and_nyquist_accuracy") {
     constexpr uint32_t sampleRate = 48000;
     FftAnalyzer analyzer(sampleRate, 64);
 
-    // Nyquist frequency = sampleRate / 2 = 24000 Hz
-    // Discrete Nyquist cosine: cos(pi * n) = [1, -1, 1, -1, ...]
+    // 1. Test 21 kHz tone in the top display band (which covers up to 22 kHz)
+    constexpr float freq21k = 21000.0f;
+    std::array<float, FftAnalyzer::kFftSize> sine21k{};
+    for (size_t n = 0; n < FftAnalyzer::kFftSize; ++n) {
+        double t = static_cast<double>(n) / static_cast<double>(sampleRate);
+        sine21k[n] = static_cast<float>(std::sin(2.0 * M_PI * freq21k * t));
+    }
+
+    std::array<float, 64> bands21k{};
+    analyzer.processDirect(sine21k.data(), bands21k.data(), 64);
+
+    // The highest display band (band 63, covering ~19.4 kHz to 22.0 kHz) must capture 21 kHz
+    ASSERT_GE(bands21k[63], 0.80f);
+    // Low frequency bands (<10 kHz, bands 0..40) must be clean (< -40 dB)
+    for (size_t b = 0; b < 40; ++b) {
+        ASSERT_LT(bands21k[b], 0.01f);
+    }
+
+    // 2. Discrete Nyquist cosine: cos(pi * n) = [1, -1, 1, -1, ...]
     std::array<float, FftAnalyzer::kFftSize> nyquistSignal{};
     for (size_t n = 0; n < FftAnalyzer::kFftSize; ++n) {
         nyquistSignal[n] = (n % 2 == 0) ? 1.0f : -1.0f;
     }
 
-    // 1. Unwindowed raw FFT: exact energy isolation at Nyquist bin (kHalfFft = 512)
+    // Unwindowed raw FFT: exact energy isolation at Nyquist bin (kHalfFft = 512)
     std::array<Complex, FftAnalyzer::kFftSize> rawSpectrum{};
     analyzer.computeFftRaw(nyquistSignal.data(), rawSpectrum.data(), false);
 
@@ -220,25 +237,14 @@ TEST_CASE("fft_analyzer_nyquist_accuracy") {
         ASSERT_NEAR(rawSpectrum[k].magnitude(), 0.0f, 1e-4f);
     }
 
-    // 2. Windowed real-time processing & display bands
-    std::array<float, 64> bands{};
-    analyzer.processDirect(nyquistSignal.data(), bands.data(), 64);
+    // Windowed Nyquist bin is normalized to 1.0
+    analyzer.processDirect(nyquistSignal.data(), bands21k.data(), 64);
     const auto& magnitudes = analyzer.getLatestMagnitudes();
-
-    // Nyquist bin is normalized to 1.0
     ASSERT_NEAR(magnitudes[FftAnalyzer::kHalfFft], 1.0f, 0.02f);
-
-    // The highest display band (band 63) covers Nyquist
-    ASSERT_NEAR(bands[63], 1.0f, 0.02f);
-
-    // Low frequency bands (<10 kHz, bands 0..40) must be clean (< -40 dB)
-    for (size_t b = 0; b < 40; ++b) {
-        ASSERT_LT(bands[b], 0.01f);
-    }
 }
 
 // ==============================================================================
-// 6. Logarithmic Display Bands Properties Test
+// 6. Logarithmic Display Bands Properties Test (8 Hz to 22 kHz)
 // ==============================================================================
 TEST_CASE("fft_analyzer_logarithmic_bands_properties") {
     // Test both 32-band and 64-band configurations
@@ -254,9 +260,9 @@ TEST_CASE("fft_analyzer_logarithmic_bands_properties") {
             ASSERT_GT(info.centerFrequency, prevCenter);
             prevCenter = info.centerFrequency;
 
-            // Frequencies within valid audio spectrum
-            ASSERT_GE(info.minFrequency, 19.9f);
-            ASSERT_LE(info.maxFrequency, 24001.0f);
+            // Frequencies within calibrated audio spectrum (8 Hz to 22 kHz)
+            ASSERT_GE(info.minFrequency, 7.9f);
+            ASSERT_LE(info.maxFrequency, 22001.0f);
             ASSERT_LE(info.minFrequency, info.centerFrequency);
             ASSERT_LE(info.centerFrequency, info.maxFrequency);
 
@@ -265,8 +271,8 @@ TEST_CASE("fft_analyzer_logarithmic_bands_properties") {
             ASSERT_LE(info.endBin, static_cast<uint32_t>(FftAnalyzer::kHalfFft));
         }
 
-        // Verify highest band reaches Nyquist
-        ASSERT_EQ(bandInfo[numBands - 1].endBin, static_cast<uint32_t>(FftAnalyzer::kHalfFft));
+        // Verify highest band reaches 22 kHz
+        ASSERT_GE(bandInfo[numBands - 1].maxFrequency, 21990.0f);
     }
 }
 

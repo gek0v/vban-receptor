@@ -67,9 +67,12 @@ void FftAnalyzer::initTables() noexcept {
 }
 
 void FftAnalyzer::setupLogBands() noexcept {
-    // Frequency range: 20 Hz to Nyquist (up to 48 kHz max for high-res streams)
-    const float fMin = 20.0f;
-    float fMax = std::min(48000.0f, static_cast<float>(m_sampleRate) * 0.5f);
+    // Calibrated frequency range: 8 Hz to 22 kHz (full audiophile sub-bass to audible treble)
+    constexpr float kMinFreq = 8.0f;
+    constexpr float kMaxTargetFreq = 22000.0f;
+
+    const float fMin = kMinFreq;
+    float fMax = std::min(kMaxTargetFreq, static_cast<float>(m_sampleRate) * 0.5f);
     if (fMax <= fMin) {
         fMax = static_cast<float>(m_sampleRate) * 0.5f;
     }
@@ -86,7 +89,7 @@ void FftAnalyzer::setupLogBands() noexcept {
         uint32_t endBin = static_cast<uint32_t>(std::ceil(fHigh / binWidth));
 
         if (b == 0 && startBin == 0) {
-            // First display band covers from DC / lowest frequency
+            // First display band covers from DC / lowest sub-bass frequency
             startBin = 0;
         } else if (startBin == 0) {
             startBin = 1;
@@ -154,6 +157,8 @@ void FftAnalyzer::processDirect(const float* input1024, float* outBands, size_t 
     }
     m_magnitudes[kHalfFft] = m_fftOutputScratch[kHalfFft].magnitude() * invWindowSum;
 
+    const float binWidth = static_cast<float>(m_sampleRate) / static_cast<float>(kFftSize);
+
     // Aggregate logarithmic display bands
     const size_t count = std::min(numBands, m_numBands);
     for (size_t b = 0; b < count; ++b) {
@@ -164,6 +169,24 @@ void FftAnalyzer::processDirect(const float* input1024, float* outBands, size_t 
                 maxVal = std::max(maxVal, m_magnitudes[k]);
             }
         }
+
+        // For narrow low-frequency sub-bass bands mapping to the same bin range,
+        // use continuous linear interpolation across bins to render smooth dynamic variation
+        if (info.endBin - info.startBin <= 1 && binWidth > 0.0f) {
+            float kFrac = info.centerFrequency / binWidth;
+            uint32_t k0 = static_cast<uint32_t>(kFrac);
+            if (k0 < kHalfFft) {
+                uint32_t k1 = k0 + 1;
+                float t = kFrac - static_cast<float>(k0);
+                float interp = (1.0f - t) * m_magnitudes[k0] + t * m_magnitudes[k1];
+                if (b == 0) {
+                    maxVal = std::max(maxVal, interp);
+                } else {
+                    maxVal = interp;
+                }
+            }
+        }
+
         outBands[b] = maxVal;
     }
     for (size_t b = count; b < numBands; ++b) {

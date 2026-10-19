@@ -141,7 +141,7 @@ private:
  * Engineered for zero-allocation, lock-free real-time audio visualization:
  * - 1024-point Radix-2 Cooley-Tukey DIT FFT with precomputed bit-reversal and twiddle tables.
  * - Perfectly symmetric Hann window precomputed with coherent gain normalization.
- * - Logarithmic display bands (supports 32 or 64 bands) covering 20 Hz to Nyquist / 48 kHz.
+ * - Logarithmic display bands (supports 32 or 64 bands) covering 8 Hz to 22 kHz.
  * - Lock-free, wait-free Triple Buffer snapshot extraction for 60 FPS JNI/Compose UI visualizers.
  * - Audio callback safe: zero allocations, zero mutexes, zero syscalls.
  */

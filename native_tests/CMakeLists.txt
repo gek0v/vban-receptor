@@ -68,7 +68,7 @@ target_include_directories(vban_native_tests PRIVATE
 find_package(Threads REQUIRED)
 target_link_libraries(vban_native_tests PRIVATE Threads::Threads)
 if(WIN32)
-    add_compile_definitions(_WIN32_WINNT=0x0600)
+    add_compile_definitions(_WIN32_WINNT=0x0600 NOMINMAX)
     target_link_libraries(vban_native_tests PRIVATE ws2_32)
 endif()
 

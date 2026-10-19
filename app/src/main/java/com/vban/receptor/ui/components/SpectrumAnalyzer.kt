@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -96,9 +97,9 @@ fun SpectrumAnalyzer(
         }
 
         var lastFrameNanos = 0L
-        val decayRate = 2.4f      // Linear decay units per second
-        val peakDecayRate = 1.2f  // Peak hold decay units per second
-        val peakHoldDurationMs = 600L
+        val decayRate = 1.6f      // Smooth dynamic decay units per second
+        val peakDecayRate = 0.7f  // Peak hold decay units per second
+        val peakHoldDurationMs = 650L
 
         while (isActive) {
             withFrameNanos { frameNanos ->
@@ -117,13 +118,23 @@ fun SpectrumAnalyzer(
                 val input = latestMagnitudes
 
                 for (b in 0 until effectiveBands) {
-                    val rawVal = if (latestIsRunning && b < input.size) {
+                    val rawLinear = if (latestIsRunning && b < input.size) {
                         input[b].coerceIn(0.0f, 1.0f)
                     } else {
                         0.0f
                     }
 
-                    // Instantaneous fast attack, smooth exponential/linear decay
+                    // Perceptual Logarithmic Decibel Mapping (-54 dBFS to 0 dBFS dynamic range)
+                    // Transforms small linear amplitudes (e.g. 0.01 = -40dB) into visible, dynamic heights
+                    val rawVal = if (rawLinear > 0.0001f) {
+                        val db = 20.0f * kotlin.math.log10(rawLinear)
+                        val minDb = -54.0f
+                        ((db - minDb) / (-minDb)).coerceIn(0.0f, 1.0f)
+                    } else {
+                        0.0f
+                    }
+
+                    // Instantaneous fast attack, smooth decay
                     if (rawVal >= nextLevels[b]) {
                         nextLevels[b] = rawVal
                     } else {
@@ -158,7 +169,7 @@ fun SpectrumAnalyzer(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Header Bar: Title, Band Count & Nyquist Bandwidth
+            // Header Bar: Title, Band Count & Dynamic Range Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -171,7 +182,7 @@ fun SpectrumAnalyzer(
                     Icon(
                         imageVector = Icons.Default.GraphicEq,
                         contentDescription = "FFT Spectrum Analyzer",
-                        tint = CyanAccent,
+                        tint = CrimsonRed,
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
@@ -186,99 +197,129 @@ fun SpectrumAnalyzer(
 
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = CyanAccent.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, CyanAccent.copy(alpha = 0.35f))
+                    color = CrimsonRed.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, CrimsonRed.copy(alpha = 0.35f))
                 ) {
                     Text(
-                        text = "$effectiveBands BANDS · 1024-PT FFT",
+                        text = "$effectiveBands BANDS · 8 Hz – 22 kHz",
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 10.sp
                         ),
-                        color = CyanAccent
+                        color = CrimsonRed
                     )
                 }
             }
 
-            // 60 FPS Visualizer Canvas
+            // 60 FPS Visualizer Canvas with Expanded 190dp Height and dB Scale
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp)
+                    .height(190.dp)
                     .background(AnalyzerBackground, RoundedCornerShape(8.dp))
                     .padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
-                Canvas(modifier = Modifier.matchParentSize()) {
-                    val canvasWidth = size.width
-                    val canvasHeight = size.height
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Canvas(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize()
+                    ) {
+                        val canvasWidth = size.width
+                        val canvasHeight = size.height
 
-                    // 1. Draw subtle horizontal dBFS grid lines (-6dB, -18dB, -36dB, -60dB)
-                    val dbGridFractions = floatArrayOf(0.0f, 0.25f, 0.50f, 0.75f, 1.0f)
-                    for (frac in dbGridFractions) {
-                        val y = canvasHeight * (1.0f - frac)
-                        drawLine(
-                            color = GridLineColor,
-                            start = Offset(0f, y),
-                            end = Offset(canvasWidth, y),
-                            strokeWidth = 1f
+                        // 1. Draw subtle horizontal dBFS grid lines (-48dB, -36dB, -24dB, -12dB, 0dB)
+                        val dbGridFractions = floatArrayOf(0.11f, 0.33f, 0.56f, 0.78f, 1.0f)
+                        for (frac in dbGridFractions) {
+                            val y = canvasHeight * (1.0f - frac)
+                            drawLine(
+                                color = GridLineColor,
+                                start = Offset(0f, y),
+                                end = Offset(canvasWidth, y),
+                                strokeWidth = 1f
+                            )
+                        }
+
+                        // 2. Bar geometry calculation
+                        val totalBars = effectiveBands
+                        val spacing = if (totalBars > 32) 1.5f else 2.5f
+                        val totalSpacing = spacing * (totalBars - 1)
+                        val barWidth = max(1.0f, (canvasWidth - totalSpacing) / totalBars)
+
+                        // Multi-stop High-Contrast Audiophile Gradient (White -> Coral -> Crimson -> Deep Maroon)
+                        val barGradient = Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFFFFFFFF), // Peak / Near 0 dBFS (Top) - Crisp White
+                                Color(0xFFFCA5A5), // -12 dBFS - Light Coral
+                                CrimsonRed,        // -24 dBFS - Vibrant Scarlet
+                                Color(0xFF7F1D1D)  // -54 dBFS Baseline (Bottom) - Deep Wine Red
+                            ),
+                            startY = 0f,
+                            endY = canvasHeight
                         )
+
+                        // 3. Render animated gradient bars with peak hold tick caps
+                        val cornerRad = CornerRadius(barWidth * 0.4f, barWidth * 0.4f)
+                        val minBarHeight = 2f
+
+                        for (i in 0 until totalBars) {
+                            val x = i * (barWidth + spacing)
+                            val level = currentLevels.getOrElse(i) { 0.0f }
+                            val peak = peakHolds.getOrElse(i) { 0.0f }
+
+                            val barHeight = max(minBarHeight, level * canvasHeight)
+                            val barTop = canvasHeight - barHeight
+
+                            // Render gradient magnitude bar
+                            drawRoundRect(
+                                brush = barGradient,
+                                topLeft = Offset(x, barTop),
+                                size = Size(barWidth, barHeight),
+                                cornerRadius = cornerRad
+                            )
+
+                            // Render white peak hold cap tick
+                            if (peak > 0.03f) {
+                                val peakY = canvasHeight - (peak * canvasHeight).coerceAtMost(canvasHeight - 2f)
+                                drawRoundRect(
+                                    color = PeakHoldTickColor,
+                                    topLeft = Offset(x, peakY),
+                                    size = Size(barWidth, 2f),
+                                    cornerRadius = CornerRadius(1f, 1f)
+                                )
+                            }
+                        }
                     }
 
-                    // 2. Bar geometry calculation
-                    val totalBars = effectiveBands
-                    val spacing = if (totalBars > 32) 1.5f else 2.5f
-                    val totalSpacing = spacing * (totalBars - 1)
-                    val barWidth = max(1.0f, (canvasWidth - totalSpacing) / totalBars)
-
-                    // Multi-stop Audiophile Gradient (Cyan -> Emerald -> Gold -> Crimson)
-                    val barGradient = Brush.verticalGradient(
-                        colors = listOf(
-                            CrimsonRed,   // Peak / Near 0 dBFS (Top)
-                            GoldAccent,   // -6 dBFS
-                            EmeraldGreen, // -18 dBFS
-                            CyanAccent    // Baseline / Low levels (Bottom)
-                        ),
-                        startY = 0f,
-                        endY = canvasHeight
-                    )
-
-                    // 3. Render animated gradient bars with peak hold tick caps
-                    val cornerRad = CornerRadius(barWidth * 0.4f, barWidth * 0.4f)
-                    val minBarHeight = 2f
-
-                    for (i in 0 until totalBars) {
-                        val x = i * (barWidth + spacing)
-                        val level = currentLevels.getOrElse(i) { 0.0f }
-                        val peak = peakHolds.getOrElse(i) { 0.0f }
-
-                        val barHeight = max(minBarHeight, level * canvasHeight)
-                        val barTop = canvasHeight - barHeight
-
-                        // Render gradient magnitude bar
-                        drawRoundRect(
-                            brush = barGradient,
-                            topLeft = Offset(x, barTop),
-                            size = Size(barWidth, barHeight),
-                            cornerRadius = cornerRad
-                        )
-
-                        // Render white/cyan peak hold cap tick
-                        if (peak > 0.03f) {
-                            val peakY = canvasHeight - (peak * canvasHeight).coerceAtMost(canvasHeight - 2f)
-                            drawRoundRect(
-                                color = PeakHoldTickColor,
-                                topLeft = Offset(x, peakY),
-                                size = Size(barWidth, 2f),
-                                cornerRadius = CornerRadius(1f, 1f)
+                    // Vertical dBFS Legend along right side
+                    Column(
+                        modifier = Modifier
+                            .padding(start = 6.dp)
+                            .height(174.dp),
+                        verticalArrangement = Arrangement.SpaceBetween,
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        listOf("0dB", "-12", "-24", "-36", "-48").forEach { dbLabel ->
+                            Text(
+                                text = dbLabel,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color(0xFF64748B)
                             )
                         }
                     }
                 }
             }
 
-            // Frequency Scale Axis Labels (20 Hz to 20 kHz / Nyquist)
+            // Frequency Scale Axis Labels (8 Hz to 22 kHz)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -286,16 +327,16 @@ fun SpectrumAnalyzer(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val nyquistKhz = (sampleRate / 2000)
-                val labels = listOf("20Hz", "100Hz", "500Hz", "1kHz", "5kHz", "10kHz", "${nyquistKhz}kHz")
+                val labels = listOf("8Hz", "32Hz", "125Hz", "500Hz", "2kHz", "8kHz", "22kHz")
                 labels.forEach { label ->
                     Text(
                         text = label,
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 9.sp
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold
                         ),
-                        color = Color(0xFF64748B)
+                        color = Color(0xFF94A3B8)
                     )
                 }
             }

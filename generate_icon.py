@@ -10,12 +10,13 @@ def draw_vban_icon(size=512, is_round=False):
     center = size / 2.0
     radius = (size * 0.46) if is_round else (size * 0.45)
     
-    # 1. Base shape
+    # 1. Base shape - Audiophile Crimson / Scarlet Red
+    # Base red: (220, 38, 38) #DC2626, Border: (185, 28, 28) #B91C1C
     if is_round:
         draw.ellipse(
             [center - radius, center - radius, center + radius, center + radius],
-            fill=(12, 18, 30, 255),
-            outline=(30, 41, 59, 255),
+            fill=(220, 38, 38, 255),
+            outline=(185, 28, 28, 255),
             width=max(2, int(size * 0.015))
         )
     else:
@@ -24,49 +25,42 @@ def draw_vban_icon(size=512, is_round=False):
         draw.rounded_rectangle(
             [size * 0.05, size * 0.05, size * 0.95, size * 0.95],
             radius=corner,
-            fill=(12, 18, 30, 255),
-            outline=(30, 41, 59, 255),
+            fill=(220, 38, 38, 255),
+            outline=(185, 28, 28, 255),
             width=max(2, int(size * 0.015))
         )
     
-    # Subtle inner dark circular glow
+    # Subtle inner vibrant red disc for depth
     glow_r = size * 0.38
     draw.ellipse(
         [center - glow_r, center - glow_r, center + glow_r, center + glow_r],
-        fill=(17, 24, 39, 255),
-        outline=(0, 229, 255, 35),
+        fill=(239, 68, 68, 255), # #EF4444
+        outline=(255, 255, 255, 45),
         width=max(1, int(size * 0.01))
     )
 
-    # 2. Minimalist Audio Waves / Network Broadcast Arcs behind
-    # Concentric soundwave arcs at top
+    # 2. Minimalist Audio Waves / Network Broadcast Arcs in Translucent White
     wave_cx = center
     wave_cy = size * 0.36
-    for r_factor, alpha in [(0.28, 60), (0.22, 100), (0.16, 160)]:
+    for r_factor, alpha in [(0.28, 70), (0.22, 120), (0.16, 190)]:
         r = size * r_factor
         draw.arc(
             [wave_cx - r, wave_cy - r, wave_cx + r, wave_cy + r],
             start=215,
             end=325,
-            fill=(0, 229, 255, alpha),
-            width=max(2, int(size * 0.018))
+            fill=(255, 255, 255, alpha),
+            width=max(2, int(size * 0.020))
         )
 
-    # 3. Stylized Minimalist "V" Audio Equalizer / Waves
-    # Central "V" formed by dynamic vertical audio bars
-    # Bars arranged symmetrically in a V-notch:
-    # 7 bars: x offsets relative to center
-    bar_count = 7
-    bar_width = size * 0.055
+    # 3. Stylized Minimalist "V" Audio Equalizer / Waves in Crisp Pure White
+    # 7 bars arranged symmetrically in a V-notch
+    bar_width = size * 0.058
     spacing = size * 0.08
-    # Heights from outer to center: tall -> short (forming a V bottom), with soundwave variation
-    # Heights: [0.38, 0.30, 0.22, 0.14, 0.22, 0.30, 0.38]
-    # Y positions form a V shape:
     bars = [
-        (-3, 0.26, 0.58),  # left outer: y_top = 0.26, y_bottom = 0.58
+        (-3, 0.26, 0.58),  # left outer
         (-2, 0.32, 0.66),  # left mid-outer
         (-1, 0.40, 0.74),  # left inner
-        ( 0, 0.50, 0.82),  # center point of the V
+        ( 0, 0.50, 0.82),  # center vertex
         ( 1, 0.40, 0.74),  # right inner
         ( 2, 0.32, 0.66),  # right mid-outer
         ( 3, 0.26, 0.58),  # right outer
@@ -78,25 +72,19 @@ def draw_vban_icon(size=512, is_round=False):
         by_bot = size * bot_frac
         b_corner = bar_width / 2.0
         
-        # Color gradient transition from Cyan (0, 229, 255) to Neon Emerald (0, 230, 118)
-        t = (pos + 3) / 6.0  # 0.0 to 1.0
-        r = int(0 * (1 - t) + 0 * t)
-        g = int(229 * (1 - t) + 230 * t)
-        b = int(255 * (1 - t) + 118 * t)
-        bar_color = (r, g, b, 255)
-        
+        # Solid Pure White (#FFFFFF)
         draw.rounded_rectangle(
             [bx, by_top, bx + bar_width, by_bot],
             radius=b_corner,
-            fill=bar_color
+            fill=(255, 255, 255, 255)
         )
     
-    # Bottom anchor pulse dot (representing receiving node / audio jack point)
-    dot_r = size * 0.022
+    # Bottom anchor pulse dot (Pure White)
+    dot_r = size * 0.024
     dot_cy = size * 0.88
     draw.ellipse(
         [center - dot_r, dot_cy - dot_r, center + dot_r, dot_cy + dot_r],
-        fill=(0, 230, 118, 255)
+        fill=(255, 255, 255, 255)
     )
 
     return img
@@ -131,6 +119,11 @@ def main():
     hires_sq = draw_vban_icon(size=512, is_round=False)
     hires_sq.save(os.path.join(res_dir, "ic_launcher-web.png"), "PNG")
     print("Generated 512x512 hi-res icon")
+
+    # Generate preview artifact
+    artifact_path = r"C:\Users\Geko\.gemini\profiles\b6ae1858-fa4c-4137-99a5-a56383219363\.gemini\antigravity-cli\brain\663ef4fa-8c8c-46bd-b196-d1804f0dc71d\icon_preview.png"
+    hires_sq.save(artifact_path, "PNG")
+    print(f"Updated preview artifact at: {artifact_path}")
 
 if __name__ == "__main__":
     main()

@@ -5,58 +5,57 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Broadcast Soundwave Arcs (Top Center) -->
+    <!-- Broadcast Soundwave Arcs in Translucent White -->
     <path
         android:pathData="M34,44 A24,24 0 0,1 74,44"
-        android:strokeColor="#3500E5FF"
+        android:strokeColor="#45FFFFFF"
         android:strokeWidth="1.8"
         android:strokeLineCap="round" />
     <path
         android:pathData="M39,48 A18,18 0 0,1 69,48"
-        android:strokeColor="#6500E5FF"
+        android:strokeColor="#75FFFFFF"
         android:strokeWidth="1.8"
         android:strokeLineCap="round" />
     <path
         android:pathData="M44,52 A12,12 0 0,1 64,52"
-        android:strokeColor="#A000E5FF"
+        android:strokeColor="#B5FFFFFF"
         android:strokeWidth="1.8"
         android:strokeLineCap="round" />
 
-    <!-- Minimalist VBAN Audio Wave 'V' Structure -->
+    <!-- Minimalist VBAN Audio Wave 'V' Structure in Crisp Pure White -->
     <!-- Outer Left Bar -->
     <path
-        android:fillColor="#00E5FF"
+        android:fillColor="#FFFFFF"
         android:pathData="M30,42 L34,42 A2,2 0 0,1 36,44 L36,62 A2,2 0 0,1 34,64 L30,64 A2,2 0 0,1 28,62 L28,44 A2,2 0 0,1 30,42 Z" />
     <!-- Mid-Outer Left Bar -->
     <path
-        android:fillColor="#00E6EB"
+        android:fillColor="#FFFFFF"
         android:pathData="M38,47 L42,47 A2,2 0 0,1 44,49 L44,67 A2,2 0 0,1 42,69 L38,69 A2,2 0 0,1 36,67 L36,49 A2,2 0 0,1 38,47 Z" />
     <!-- Inner Left Bar -->
     <path
-        android:fillColor="#00E6D0"
+        android:fillColor="#FFFFFF"
         android:pathData="M46,52 L50,52 A2,2 0 0,1 52,54 L52,72 A2,2 0 0,1 50,74 L46,74 A2,2 0 0,1 44,72 L44,54 A2,2 0 0,1 46,52 Z" />
 
     <!-- Central Vertex Bar of the 'V' -->
     <path
-        android:fillColor="#00E6B4"
+        android:fillColor="#FFFFFF"
         android:pathData="M52,58 L56,58 A2,2 0 0,1 58,60 L58,78 A2,2 0 0,1 56,80 L52,80 A2,2 0 0,1 50,78 L50,60 A2,2 0 0,1 52,58 Z" />
 
     <!-- Inner Right Bar -->
     <path
-        android:fillColor="#00E6A0"
+        android:fillColor="#FFFFFF"
         android:pathData="M58,52 L62,52 A2,2 0 0,1 64,54 L64,72 A2,2 0 0,1 62,74 L58,74 A2,2 0 0,1 56,72 L56,54 A2,2 0 0,1 58,52 Z" />
     <!-- Mid-Outer Right Bar -->
     <path
-        android:fillColor="#00E68A"
+        android:fillColor="#FFFFFF"
         android:pathData="M66,47 L70,47 A2,2 0 0,1 72,49 L72,67 A2,2 0 0,1 70,69 L66,69 A2,2 0 0,1 64,67 L64,49 A2,2 0 0,1 66,47 Z" />
     <!-- Outer Right Bar -->
     <path
-        android:fillColor="#00E676"
+        android:fillColor="#FFFFFF"
         android:pathData="M74,42 L78,42 A2,2 0 0,1 80,44 L80,62 A2,2 0 0,1 78,64 L74,64 A2,2 0 0,1 72,62 L72,44 A2,2 0 0,1 74,42 Z" />
 
     <!-- Receiver Node Dot -->
     <path
-        android:fillColor="#00E676"
+        android:fillColor="#FFFFFF"
         android:pathData="M54,85m-2.2,0a2.2,2.2 0 1,0 4.4,0a2.2,2.2 0 1,0 -4.4,0" />
-
 </vector>
