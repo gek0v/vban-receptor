@@ -1,14 +1,71 @@
-*.iml
-.gradle
-/local.properties
-/.idea/
-.DS_Store
-/build
-/app/build
-/build_native_test
-/native_tests/build
-.cxx
+# ==============================================================================
+# Android & Gradle Build Artifacts
+# ==============================================================================
+.gradle/
+build/
+app/build/
+*/build/
+local.properties
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+
+# C++ Native Build & CMake Artifacts
+.cxx/
+.externalNativeBuild/
+build_native_test/
+native_tests/build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+*.ninja*
+ninja.build
+
+# Compiled Binaries & Libraries
 *.obj
-*.exe
 *.o
 *.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+
+# JetBrains / Android Studio / IDEs
+.idea/
+*.iml
+.vscode/
+*.ipr
+*.iws
+captures/
+.navigation/
+
+# Python Build & Bytecode Artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.pytest_cache/
+.coverage
+htmlcov/
+dist/
+*.egg-info/
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# Agent / Tooling Scratch & Daemon Directories
+.agents/
+.orca/
+.kotlin/
+.superpowers/
+scratch/
+Microsoft/
