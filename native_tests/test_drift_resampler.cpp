@@ -570,6 +570,34 @@ TEST_CASE("dynamic_watermark_clamping_bounds") {
     ASSERT_NEAR(compensator.getTargetWatermarkMs(), 25.0f, 1e-4f);
 }
 
+TEST_CASE("dynamic_watermark_preserves_base_target_latency_for_user_profiles") {
+    vban::ClockDriftConfig config;
+    vban::ClockDriftCompensator compensator(config);
+    compensator.reconfigure(48000, 2);
+
+    // BALANCED Profile: base 32.5 ms
+    compensator.setBaseTargetLatencyMs(32.5f);
+    compensator.setTargetLatencyMs(32.5f, 48000);
+    ASSERT_NEAR(compensator.getTargetWatermarkMs(), 32.5f, 1e-4f);
+
+    // Low jitter -> must NOT reduce 32.5 ms down to 5-25 ms!
+    compensator.setNetworkJitter(0.5f, 192);
+    ASSERT_NEAR(compensator.getTargetWatermarkMs(), 32.5f, 1e-4f);
+
+    // High jitter 2.0 ms -> must NOT reduce below 32.5 ms
+    compensator.setNetworkJitter(2.0f, 192);
+    ASSERT_GE(compensator.getTargetWatermarkMs(), 32.5f);
+
+    // ANTI_JITTER Profile: base 150.0 ms
+    compensator.setBaseTargetLatencyMs(150.0f);
+    compensator.setTargetLatencyMs(150.0f, 48000);
+    ASSERT_NEAR(compensator.getTargetWatermarkMs(), 150.0f, 1e-4f);
+
+    // Jitter update must NOT reduce 150 ms down to 5-25 ms!
+    compensator.setNetworkJitter(1.0f, 192);
+    ASSERT_NEAR(compensator.getTargetWatermarkMs(), 150.0f, 1e-4f);
+}
+
 TEST_CASE("drift_compensator_glitch_count_and_unrecoverable_drops") {
     vban::ClockDriftConfig cfg;
     cfg.ringBufferCapacity = 1024;

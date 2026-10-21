@@ -100,7 +100,7 @@ object NativeVbanEngine {
     private val _telemetry = MutableStateFlow(NativeTelemetry())
     val telemetry: StateFlow<NativeTelemetry> = _telemetry.asStateFlow()
 
-    private val _latencyProfile = MutableStateFlow(com.vban.receptor.audio.LatencyProfile.BALANCED)
+    private val _latencyProfile = MutableStateFlow(com.vban.receptor.audio.LatencyProfile.DEFAULT)
     val latencyProfile: StateFlow<com.vban.receptor.audio.LatencyProfile> = _latencyProfile.asStateFlow()
 
     private val _spectrumBands = MutableStateFlow(FloatArray(64))

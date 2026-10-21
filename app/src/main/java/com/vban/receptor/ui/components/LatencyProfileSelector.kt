@@ -273,6 +273,7 @@ private fun LatencySegmentItem(
 
 private fun getProfileAccentColor(profile: LatencyProfile): Color {
     return when (profile) {
+        LatencyProfile.AUTO -> CyanAccent
         LatencyProfile.ULTRA_LOW -> CyanAccent
         LatencyProfile.BALANCED -> EmeraldGreen
         LatencyProfile.ANTI_JITTER -> GoldAccent
@@ -281,6 +282,7 @@ private fun getProfileAccentColor(profile: LatencyProfile): Color {
 
 private fun getProfileIcon(profile: LatencyProfile): ImageVector {
     return when (profile) {
+        LatencyProfile.AUTO -> Icons.Default.Tune
         LatencyProfile.ULTRA_LOW -> Icons.Default.Bolt
         LatencyProfile.BALANCED -> Icons.Default.Tune
         LatencyProfile.ANTI_JITTER -> Icons.Default.NetworkCheck

@@ -169,6 +169,13 @@ public:
     }
 
     /**
+     * Monotonic count of packets dropped or unrecoverable gaps from reorder queue.
+     */
+    [[nodiscard]] uint64_t getUnrecoverableDrops() const noexcept {
+        return m_reorderQueue.getUnrecoverableDrops();
+    }
+
+    /**
      * Access underlying packet reorder and PLC queue.
      */
     [[nodiscard]] PacketReorderQueue<float, 16, STAGING_MAX_SAMPLES>& getReorderQueue() noexcept {

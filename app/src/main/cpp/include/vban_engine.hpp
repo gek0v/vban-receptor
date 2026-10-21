@@ -103,7 +103,9 @@ public:
     NativeTelemetry getTelemetry() const noexcept;
 
     [[nodiscard]] float getTargetWatermarkMs() const noexcept { return compensator_.getTargetWatermarkMs(); }
-    [[nodiscard]] uint64_t getUnrecoverableDrops() const noexcept { return compensator_.getUnrecoverableDrops(); }
+    [[nodiscard]] uint64_t getUnrecoverableDrops() const noexcept {
+        return receiver_ ? receiver_->getUnrecoverableDrops() : 0;
+    }
     [[nodiscard]] uint64_t getGlitchCount() const noexcept { return compensator_.getGlitchCount(); }
 
     /**
@@ -176,7 +178,7 @@ private:
 
     VbanParser parser_{"Stream1"};
     SpscRingBuffer<float, VBAN_RING_BUFFER_CAPACITY> ringBuffer_;
-    mutable DriftCompensator compensator_;
+    DriftCompensator compensator_;
     std::unique_ptr<OboePlayer> player_;
     std::unique_ptr<VbanReceiver> receiver_;
 

@@ -184,6 +184,8 @@ void VbanEngine::reconfigWorkerLoop() {
 
         if (player_) {
             player_->reconfigure(newRate, newChannels, currentDeviceId_.load(std::memory_order_relaxed));
+            const int32_t burst = player_->getFramesPerBurst() > 0 ? player_->getFramesPerBurst() : 192;
+            compensator_.setNetworkJitter(0.0f, static_cast<uint32_t>(burst));
         }
 
         m_currentSampleRate.store(newRate, std::memory_order_release);
@@ -198,6 +200,8 @@ bool VbanEngine::reconfigureStream(const AudioStreamConfig& config) {
     m_currentChannels.store(config.channelCount, std::memory_order_release);
     if (player_) {
         player_->reconfigure(config.sampleRate, config.channelCount, config.targetDeviceId);
+        const int32_t burst = player_->getFramesPerBurst() > 0 ? player_->getFramesPerBurst() : 192;
+        compensator_.setNetworkJitter(0.0f, static_cast<uint32_t>(burst));
     }
     return true;
 }
@@ -216,6 +220,7 @@ NativeTelemetry VbanEngine::getTelemetry() const noexcept {
         telem.sampleRate = rxTelem.activeSampleRate ? rxTelem.activeSampleRate : defaultRate;
         telem.channelCount = rxTelem.activeChannels ? rxTelem.activeChannels : defaultCh;
         telem.bitDepth = rxTelem.activeBitDepth ? rxTelem.activeBitDepth : 24;
+        telem.unrecoverableDrops = receiver_->getUnrecoverableDrops();
     } else {
         const auto parserTelem = parser_.getTelemetry();
         telem.totalPacketsReceived = parserTelem.totalPacketsReceived;
@@ -224,6 +229,7 @@ NativeTelemetry VbanEngine::getTelemetry() const noexcept {
         telem.sampleRate = defaultRate;
         telem.channelCount = defaultCh;
         telem.bitDepth = 24;
+        telem.unrecoverableDrops = receiver_ ? receiver_->getUnrecoverableDrops() : 0;
     }
 
     telem.bufferOccupancyPercent = ringBuffer_.occupancyPercent();
@@ -243,12 +249,7 @@ NativeTelemetry VbanEngine::getTelemetry() const noexcept {
     telem.peakLevelLeft = peakL;
     telem.peakLevelRight = peakR;
 
-    const int32_t burst = (player_ && player_->getFramesPerBurst() > 0) ? player_->getFramesPerBurst() : 192;
-    compensator_.setNetworkJitter(telem.jitterMs, static_cast<uint32_t>(burst));
-    compensator_.setUnrecoverableDrops(telem.lostPackets);
-
     telem.targetWatermarkMs = compensator_.getTargetWatermarkMs();
-    telem.unrecoverableDrops = compensator_.getUnrecoverableDrops();
     telem.glitchCount = compensator_.getGlitchCount();
 
     return telem;
@@ -290,12 +291,12 @@ bool VbanEngine::processPacket(const uint8_t* buffer, size_t size) {
 
     const int32_t burst = (player_ && player_->getFramesPerBurst() > 0) ? player_->getFramesPerBurst() : 192;
     compensator_.setNetworkJitter(static_cast<float>(parser_.getTelemetry().jitterMs), static_cast<uint32_t>(burst));
-    compensator_.setUnrecoverableDrops(parser_.getTelemetry().lostPackets);
 
     return true;
 }
 
 bool VbanEngine::setTargetLatencyMs(float latencyMs) {
+    compensator_.setBaseTargetLatencyMs(latencyMs);
     const uint32_t currentRate = m_currentSampleRate.load(std::memory_order_relaxed);
     compensator_.setTargetLatencyMs(latencyMs, currentRate > 0 ? currentRate : 48000);
     LOGI("VbanEngine target latency set to %.1f ms (rate %u Hz)", latencyMs, currentRate);

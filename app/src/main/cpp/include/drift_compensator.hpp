@@ -519,6 +519,15 @@ public:
 
     void reset() noexcept;
 
+    void setBaseTargetLatencyMs(float baseMs) noexcept {
+        if (baseMs > 0.0f) {
+            m_baseTargetLatencyMs.store(baseMs, std::memory_order_relaxed);
+        }
+    }
+    [[nodiscard]] float getBaseTargetLatencyMs() const noexcept {
+        return m_baseTargetLatencyMs.load(std::memory_order_relaxed);
+    }
+
     void setTargetLatencyMs(float targetMs, uint32_t sampleRate) noexcept;
     void setNetworkJitter(float jitterMs, uint32_t burstFrames) noexcept;
     void reconfigure(uint32_t sampleRate, uint16_t channels) noexcept;
@@ -635,6 +644,7 @@ private:
     std::atomic<float> m_telemetryRawPercent{0.0f};
 
     std::atomic<float> m_targetWatermarkMs{10.0f};
+    std::atomic<float> m_baseTargetLatencyMs{5.0f};
     std::atomic<double> m_targetOccupancyPercent{50.0};
     std::atomic<uint64_t> m_glitchCount{0};
     std::atomic<uint64_t> m_unrecoverableDrops{0};

@@ -269,3 +269,41 @@ TEST_CASE("VbanReceiver reorders out-of-order UDP datagrams before SPSC push") {
         ASSERT_NEAR(readAudio[i], 0.8f, 1e-4f);
     }
 }
+
+TEST_CASE("PacketReorderQueue accurate unrecoverable drops tracking") {
+    vban::PacketReorderQueue<float, 16, 512> queue;
+    queue.setTimeoutMs(0.0); // Immediate expiration on gap
+
+    ASSERT_EQ(queue.getUnrecoverableDrops(), 0ULL);
+
+    float p[4] = {1.f, 1.f, 1.f, 1.f};
+
+    // 1. In-order arrival: 101, 102 -> 0 drops
+    ASSERT_TRUE(queue.push(101, p, 4));
+    ASSERT_TRUE(queue.push(102, p, 4));
+    float out[16] = {};
+    bool plc = false;
+    queue.popOrdered(out, 16, plc);
+    ASSERT_EQ(queue.getUnrecoverableDrops(), 0ULL);
+
+    // 2. Out-of-order arrival: 104, then 103 -> reassembled without drops!
+    ASSERT_TRUE(queue.push(104, p, 4));
+    ASSERT_TRUE(queue.push(103, p, 4));
+    queue.popOrdered(out, 16, plc);
+    ASSERT_EQ(queue.getUnrecoverableDrops(), 0ULL);
+
+    // 3. Single-packet gap with expiration: 105 never arrives, 106 arrives
+    ASSERT_TRUE(queue.push(106, p, 4));
+    queue.popOrdered(out, 16, plc); // Expired 105 -> PLC synthesized 1 packet
+    ASSERT_TRUE(plc);
+    ASSERT_EQ(queue.getUnrecoverableDrops(), 1ULL);
+
+    // 4. Multi-packet gap: 107 never arrives, 108 never arrives, 110 arrives (missing 107, 108, 109 = 3 packets)
+    ASSERT_TRUE(queue.push(110, p, 4));
+    queue.popOrdered(out, 16, plc); // Gap > 1 -> 3 packets dropped
+    ASSERT_EQ(queue.getUnrecoverableDrops(), 4ULL);
+
+    // 5. Sequence jump >= SlotCount (16): jump from 111 to 140 (delta = 29)
+    ASSERT_TRUE(queue.push(140, p, 4));
+    ASSERT_EQ(queue.getUnrecoverableDrops(), 33ULL); // 4 + 29 = 33
+}

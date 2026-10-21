@@ -7,6 +7,7 @@
 #include <cmath>
 #include <chrono>
 #include <algorithm>
+#include <atomic>
 
 namespace vban {
 
@@ -51,6 +52,7 @@ public:
         m_consecutivePlcCount = 0;
         m_gapDetected = false;
         m_gapMissingNuFrame = 0;
+        m_unrecoverableDrops.store(0, std::memory_order_relaxed);
 
         for (auto& slot : m_slots) {
             slot.valid = false;
@@ -97,6 +99,7 @@ public:
 
         // Sequence jump exceeding circular buffer capacity: flush and reset tracking
         if (delta >= SlotCount) {
+            m_unrecoverableDrops.fetch_add(delta, std::memory_order_relaxed);
             flushAndResetAll(nuFrame);
             const size_t slotIdx = nuFrame % SlotCount;
             m_slots[slotIdx].nuFrame = nuFrame;
@@ -226,12 +229,14 @@ public:
             const uint32_t missingCount = nextAvailableNuFrame - m_expectedNuFrame;
             if (missingCount > 1 || m_consecutivePlcCount >= 1) {
                 // Gap > 1 packet: flush queue and reset sequence tracking to next available packet
+                m_unrecoverableDrops.fetch_add(missingCount, std::memory_order_relaxed);
                 flushAndResetTo(nextAvailableNuFrame);
                 continue;
             }
 
             // Single-packet gap (missingCount == 1 and m_consecutivePlcCount == 0):
             // Extrapolate 1 packet with smooth raised-cosine decay from previous frame tail.
+            m_unrecoverableDrops.fetch_add(1, std::memory_order_relaxed);
             const size_t nextSlotIdx = nextAvailableNuFrame % SlotCount;
             size_t plcCount = m_slots[nextSlotIdx].sampleCount;
             if (plcCount == 0 && m_lastValidSampleCount > 0) {
@@ -303,6 +308,10 @@ public:
         return count;
     }
 
+    [[nodiscard]] uint64_t getUnrecoverableDrops() const noexcept {
+        return m_unrecoverableDrops.load(std::memory_order_relaxed);
+    }
+
 private:
     struct Slot {
         uint32_t nuFrame{0};
@@ -355,6 +364,7 @@ private:
     bool m_gapDetected{false};
     uint32_t m_gapMissingNuFrame{0};
     size_t m_consecutivePlcCount{0};
+    std::atomic<uint64_t> m_unrecoverableDrops{0};
 };
 
 } // namespace vban

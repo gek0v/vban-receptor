@@ -20,6 +20,19 @@ enum class LatencyProfile(
     val targetLatencyMsMax: Float
 ) {
     /**
+     * AUTO Profile (Default):
+     * Target latency 5–25 ms.
+     * Dynamic RFC 3550 servo jitter buffer adaptation.
+     */
+    AUTO(
+        id = "AUTO",
+        displayName = "Auto (Adaptativo)",
+        subtitle = "5–25 ms · RFC 3550 Servo",
+        targetLatencyMsMin = 5.0f,
+        targetLatencyMsMax = 25.0f
+    ),
+
+    /**
      * ULTRA_LOW Profile:
      * Target latency 5–10 ms (~480–960 samples at 48 kHz).
      * Designed for wired Ethernet, direct Thunderbolt/USB networking, or dedicated 5 GHz / 6 GHz Wi-Fi links.
@@ -60,9 +73,10 @@ enum class LatencyProfile(
 
     /**
      * Nominal midpoint target latency in milliseconds.
+     * For AUTO, defaults to targetLatencyMsMin (5 ms base latency) to let the RFC 3550 servo adapt upwards.
      */
     val targetLatencyMs: Float
-        get() = (targetLatencyMsMin + targetLatencyMsMax) * 0.5f
+        get() = if (this == AUTO) targetLatencyMsMin else (targetLatencyMsMin + targetLatencyMsMax) * 0.5f
 
     /**
      * Human-readable formatted latency range, e.g. "5–10 ms".
@@ -72,9 +86,9 @@ enum class LatencyProfile(
 
     companion object {
         /**
-         * Default latency profile recommended for general audiophile streaming.
+         * Default latency profile recommended for general streaming.
          */
-        val DEFAULT: LatencyProfile = BALANCED
+        val DEFAULT: LatencyProfile = AUTO
 
         /**
          * Parses a profile by its ID, falling back to [DEFAULT] if not found.
