@@ -156,6 +156,25 @@ TEST_CASE("receiver_socket_create_bind_and_buffer_config") {
     close_sock(sock);
 }
 
+TEST_CASE("receiver_bind_fallback_to_inaddr_any_on_remote_transmitter_ip") {
+    WsaGuard wsa;
+    vban::SpscRingBuffer<float, vban::VBAN_RING_BUFFER_CAPACITY> ringBuffer;
+    vban::VbanReceiver receiver(ringBuffer);
+
+    vban::ReceiverSocketConfig cfg;
+    // 192.0.2.1 is TEST-NET-1 (RFC 5737), not assigned to any local interface
+    cfg.listenIp = "192.0.2.1";
+    cfg.port = 18985;
+    cfg.streamName = "FallbackTest";
+    cfg.socketBufferSize = 65536;
+
+    // Should gracefully fall back to INADDR_ANY and bind successfully
+    ASSERT_TRUE(receiver.start(cfg));
+    EXPECT_TRUE(receiver.isRunning());
+    receiver.stop();
+    EXPECT_FALSE(receiver.isRunning());
+}
+
 // ==============================================================================
 // 2. Multicast Address Validation Tests
 // ==============================================================================
@@ -347,9 +366,10 @@ TEST_CASE("receiver_dynamic_stream_reconfiguration_trigger") {
 TEST_CASE("jni_telemetry_struct_packing_and_alignment") {
     // Verify strict field sizes and offsets matching the JNI constructor:
     // (sampleRate: I, channelCount: I, bitDepth: I, totalPackets: J, lostPackets: J,
-    //  jitterMs: F, bufferOccupancy: F, peakL: F, peakR: F) -> V
+    //  jitterMs: F, bufferOccupancy: F, peakL: F, peakR: F, targetWatermarkMs: F,
+    //  unrecoverableDrops: J, glitchCount: J) -> V
 
-    ASSERT_EQ(sizeof(vban::NativeTelemetry), 40U);
+    ASSERT_EQ(sizeof(vban::NativeTelemetry), 64U);
     ASSERT_EQ(offsetof(vban::NativeTelemetry, sampleRate), 0U);
     ASSERT_EQ(offsetof(vban::NativeTelemetry, channelCount), 4U);
     ASSERT_EQ(offsetof(vban::NativeTelemetry, bitDepth), 6U);
@@ -359,6 +379,9 @@ TEST_CASE("jni_telemetry_struct_packing_and_alignment") {
     ASSERT_EQ(offsetof(vban::NativeTelemetry, bufferOccupancyPercent), 28U);
     ASSERT_EQ(offsetof(vban::NativeTelemetry, peakLevelLeft), 32U);
     ASSERT_EQ(offsetof(vban::NativeTelemetry, peakLevelRight), 36U);
+    ASSERT_EQ(offsetof(vban::NativeTelemetry, targetWatermarkMs), 40U);
+    ASSERT_EQ(offsetof(vban::NativeTelemetry, unrecoverableDrops), 48U);
+    ASSERT_EQ(offsetof(vban::NativeTelemetry, glitchCount), 56U);
 }
 
 TEST_CASE("jni_telemetry_concurrent_snapshot_integrity") {
@@ -400,8 +423,10 @@ TEST_CASE("jni_telemetry_concurrent_snapshot_integrity") {
             snapshot.peakLevelRight = receiver.getPeakRight();
 
             // Invariant assertions
-            if (snapshot.sampleRate != 48000 || snapshot.channelCount != 2 || snapshot.bitDepth != 16) {
-                consistencyViolation.store(true);
+            if (snapshot.totalPacketsReceived > 0) {
+                if (snapshot.sampleRate != 48000 || snapshot.channelCount != 2 || snapshot.bitDepth != 16) {
+                    consistencyViolation.store(true);
+                }
             }
             if (snapshot.lostPackets > snapshot.totalPacketsReceived) {
                 consistencyViolation.store(true);
@@ -521,4 +546,91 @@ TEST_CASE("receiver_buffer_saturation_channel_alignment_preservation") {
 
     ASSERT_GT(totalSamplesRead, 0U);
     EXPECT_EQ(channelSwapViolations, 0U);
+}
+
+TEST_CASE("receiver_promiscuous_mode_accepts_arbitrary_stream_names") {
+    WsaGuard wsa;
+    vban::SpscRingBuffer<float, vban::VBAN_RING_BUFFER_CAPACITY> ringBuffer;
+    vban::VbanReceiver receiver(ringBuffer);
+
+    vban::ReceiverSocketConfig cfg;
+    cfg.listenIp = "127.0.0.1";
+    cfg.port = 17985;
+    cfg.streamName = ""; // Promiscuous mode
+
+    ASSERT_TRUE(receiver.start(cfg));
+
+    auto packet1 = createTestVbanPacket(3, 255, 1, vban::VBanDataType::Int16, "Voicemeeter");
+    auto* hdr1 = reinterpret_cast<vban::VBanHeader*>(packet1.data());
+    hdr1->nuFrame = 1;
+    EXPECT_TRUE(receiver.processDatagram(packet1.data(), packet1.size()));
+    EXPECT_EQ(receiver.getDetectedStreamName(), "Voicemeeter");
+
+    auto telem1 = receiver.getTelemetry();
+    EXPECT_EQ(std::string(telem1.activeStreamName), "Voicemeeter");
+    EXPECT_EQ(telem1.validPackets, 1U);
+
+    auto packet2 = createTestVbanPacket(3, 255, 1, vban::VBanDataType::Int16, "CustomStream2");
+    auto* hdr2 = reinterpret_cast<vban::VBanHeader*>(packet2.data());
+    hdr2->nuFrame = 2;
+    EXPECT_TRUE(receiver.processDatagram(packet2.data(), packet2.size()));
+    EXPECT_EQ(receiver.getDetectedStreamName(), "CustomStream2");
+
+    auto telem2 = receiver.getTelemetry();
+    EXPECT_EQ(std::string(telem2.activeStreamName), "CustomStream2");
+    EXPECT_EQ(telem2.validPackets, 2U);
+
+    receiver.stop();
+}
+
+TEST_CASE("receiver_dynamic_bit_depth_and_zero_initial_telemetry") {
+    WsaGuard wsa;
+    vban::SpscRingBuffer<float, vban::VBAN_RING_BUFFER_CAPACITY> ringBuffer;
+    vban::VbanReceiver receiver(ringBuffer);
+
+    vban::ReceiverSocketConfig cfg;
+    cfg.listenIp = "127.0.0.1";
+    cfg.port = 17986;
+    cfg.streamName = "";
+
+    ASSERT_TRUE(receiver.start(cfg));
+
+    // 1. Initial telemetry before any packets arrive must report 0 for format
+    auto telem0 = receiver.getTelemetry();
+    EXPECT_EQ(telem0.totalPacketsReceived, 0U);
+    EXPECT_EQ(telem0.activeSampleRate, 0U);
+    EXPECT_EQ(telem0.activeChannels, 0U);
+    EXPECT_EQ(telem0.activeBitDepth, 0U);
+
+    // 2. First packet arrives: 48000 Hz, 2 channels, 24-bit PCM
+    auto packet24 = createTestVbanPacket(3, 255, 1, vban::VBanDataType::Int24, "Stream1", 1);
+    EXPECT_TRUE(receiver.processDatagram(packet24.data(), packet24.size()));
+
+    auto telem1 = receiver.getTelemetry();
+    EXPECT_EQ(telem1.totalPacketsReceived, 1U);
+    EXPECT_EQ(telem1.activeSampleRate, 48000U);
+    EXPECT_EQ(telem1.activeChannels, 2U);
+    EXPECT_EQ(telem1.activeBitDepth, 24U);
+
+    // 3. Second packet arrives: Same rate (48000 Hz) and channels (2), but bit depth switches to 16-bit
+    auto packet16 = createTestVbanPacket(3, 255, 1, vban::VBanDataType::Int16, "Stream1", 2);
+    EXPECT_TRUE(receiver.processDatagram(packet16.data(), packet16.size()));
+
+    auto telem2 = receiver.getTelemetry();
+    EXPECT_EQ(telem2.totalPacketsReceived, 2U);
+    EXPECT_EQ(telem2.activeSampleRate, 48000U);
+    EXPECT_EQ(telem2.activeChannels, 2U);
+    EXPECT_EQ(telem2.activeBitDepth, 16U);
+
+    // 4. Third packet arrives: Same rate and channels, but bit depth switches to Float32
+    auto packet32 = createTestVbanPacket(3, 255, 1, vban::VBanDataType::Float32, "Stream1", 3);
+    EXPECT_TRUE(receiver.processDatagram(packet32.data(), packet32.size()));
+
+    auto telem3 = receiver.getTelemetry();
+    EXPECT_EQ(telem3.totalPacketsReceived, 3U);
+    EXPECT_EQ(telem3.activeSampleRate, 48000U);
+    EXPECT_EQ(telem3.activeChannels, 2U);
+    EXPECT_EQ(telem3.activeBitDepth, 32U);
+
+    receiver.stop();
 }

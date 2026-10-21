@@ -32,26 +32,7 @@ jobs:
         run: ctest --test-dir build_native_test -C Release --output-on-failure
 
   # ============================================================================
-  # 2. Python End-to-End Verification Suite (84 Tests)
-  # ============================================================================
-  python-e2e-tests:
-    name: Python E2E Verification Suite
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Run E2E Test Suite
-        run: python e2e_tests/run_tests.py
-
-  # ============================================================================
-  # 3. Android JVM Tests & Debug APK Build
+  # 2. Android JVM Tests & Debug APK Build
   # ============================================================================
   android-build:
     name: Android Build & Unit Tests

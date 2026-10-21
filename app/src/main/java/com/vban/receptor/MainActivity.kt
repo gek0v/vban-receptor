@@ -16,7 +16,6 @@ import com.vban.receptor.audio.AudioDeviceManager
 import com.vban.receptor.audio.BitPerfectController
 import com.vban.receptor.service.VbanPlaybackService
 import com.vban.receptor.ui.DashboardScreen
-import com.vban.receptor.ui.components.AudioOutputDeviceItem
 import com.vban.receptor.ui.theme.VbanReceptorTheme
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -50,15 +49,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             VbanReceptorTheme {
                 val devices by audioDeviceManager.availableDevices.collectAsState()
-                val deviceItems = devices.map { device ->
-                    AudioOutputDeviceItem(
-                        id = device.id,
-                        name = device.name,
-                        type = device.type,
-                        isUsb = device.isUsb,
-                        isBitPerfectSupported = device.isBitPerfectCapable
-                    )
-                }
 
                 DashboardScreen(
                     onStartService = { ip, port, stream, deviceId ->
@@ -67,7 +57,7 @@ class MainActivity : ComponentActivity() {
                     onStopService = {
                         stopVbanService()
                     },
-                    availableDevices = deviceItems
+                    availableDevices = devices
                 )
             }
         }

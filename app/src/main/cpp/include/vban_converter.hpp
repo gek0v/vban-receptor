@@ -148,31 +148,7 @@ void calculatePeakLevelsStereoNeon(
 #endif
 
 // ==============================================================================
-// 5. C++20 std::span Safe Overloads
-// ==============================================================================
-
-inline void convertInt16ToFloat(std::span<const uint8_t> src, std::span<float> dst) noexcept {
-    const size_t totalSamples = std::min(src.size() / 2, dst.size());
-    convertInt16ToFloat(src.data(), dst.data(), totalSamples);
-}
-
-inline void convertInt24ToFloat(std::span<const uint8_t> src, std::span<float> dst) noexcept {
-    const size_t totalSamples = std::min(src.size() / 3, dst.size());
-    convertInt24ToFloat(src.data(), dst.data(), totalSamples);
-}
-
-inline void convertInt32ToFloat(std::span<const uint8_t> src, std::span<float> dst) noexcept {
-    const size_t totalSamples = std::min(src.size() / 4, dst.size());
-    convertInt32ToFloat(src.data(), dst.data(), totalSamples);
-}
-
-inline void convertFloat32Sanitized(std::span<const uint8_t> src, std::span<float> dst) noexcept {
-    const size_t totalSamples = std::min(src.size() / 4, dst.size());
-    convertFloat32Sanitized(src.data(), dst.data(), totalSamples);
-}
-
-// ==============================================================================
-// 6. Unified VBAN Payload Dispatcher
+// 5. Unified VBAN Payload Dispatcher
 // ==============================================================================
 
 /**
@@ -190,82 +166,8 @@ bool convertVbanPayloadToFloat(
     size_t totalSamples
 ) noexcept;
 
-inline bool convertVbanPayloadToFloat(
-    uint8_t formatCode,
-    std::span<const uint8_t> src,
-    std::span<float> dst
-) noexcept {
-    return convertVbanPayloadToFloat(formatCode, src.data(), dst.data(), dst.size());
-}
-
 // ==============================================================================
-// 7. Channel Interleaving / Deinterleaving Utilities
-// ==============================================================================
-
-/**
- * Deinterleaves audio frames from interleaved format to contiguous planar format.
- * Planar layout: Channel 0 (numFrames), followed by Channel 1 (numFrames), etc.
- */
-void deinterleave(
-    const float* __restrict interleaved,
-    float* __restrict planar,
-    size_t numFrames,
-    size_t numChannels
-) noexcept;
-
-/**
- * Interleaves audio frames from contiguous planar format to interleaved format.
- */
-void interleave(
-    const float* __restrict planar,
-    float* __restrict interleaved,
-    size_t numFrames,
-    size_t numChannels
-) noexcept;
-
-/**
- * Deinterleaves audio frames from interleaved format to an array of channel buffers.
- * @param channelBuffers Array of pointers, each pointing to a buffer of at least numFrames floats.
- */
-void deinterleave(
-    const float* __restrict interleaved,
-    float* const* __restrict channelBuffers,
-    size_t numFrames,
-    size_t numChannels
-) noexcept;
-
-/**
- * Interleaves audio frames from an array of channel buffers to interleaved format.
- */
-void interleave(
-    const float* const* __restrict channelBuffers,
-    float* __restrict interleaved,
-    size_t numFrames,
-    size_t numChannels
-) noexcept;
-
-/**
- * Optimized stereo deinterleaving for 2-channel audio.
- */
-void deinterleaveStereo(
-    const float* __restrict interleaved,
-    float* __restrict left,
-    float* __restrict right,
-    size_t numFrames
-) noexcept;
-
-/**
- * Optimized stereo interleaving for 2-channel audio.
- */
-void interleaveStereo(
-    const float* __restrict left,
-    const float* __restrict right,
-    float* __restrict interleaved,
-    size_t numFrames
-) noexcept;
-
-// ==============================================================================
-// 8. Telemetry Helper: Stereo Peak Level Detection (For VU Meters)
+// 6. Telemetry Helper: Stereo Peak Level Detection (For VU Meters)
 // ==============================================================================
 
 /**

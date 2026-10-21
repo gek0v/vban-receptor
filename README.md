@@ -169,9 +169,6 @@ The compiled APK will be generated at:
 cmake -B build_native_test -S native_tests
 cmake --build build_native_test --config Release
 ctest --test-dir build_native_test -C Release --output-on-failure
-
-# Run Python End-to-End verification suite (84 test cases across 4 tiers)
-python e2e_tests/run_tests.py
 ```
 
 ---

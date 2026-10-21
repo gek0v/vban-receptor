@@ -70,9 +70,13 @@ struct AutoRegister {
 
 template <typename T>
 std::string format_val(const T& val) {
-    std::ostringstream oss;
-    oss << val;
-    return oss.str();
+    if constexpr (std::is_enum_v<T>) {
+        return std::to_string(static_cast<std::underlying_type_t<T>>(val));
+    } else {
+        std::ostringstream oss;
+        oss << val;
+        return oss.str();
+    }
 }
 
 inline std::string format_val(uint8_t val) {

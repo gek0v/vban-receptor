@@ -295,4 +295,181 @@ class VbanDiscoveryTest {
         assertTrue("Stream B should be evicted at 7500ms", evictedAt7500)
         assertTrue("All streams should be evicted", manager.discoveredStreams.value.isEmpty())
     }
+
+    // =========================================================================
+    // 4. Socket Pause & Resume Tests (UDP 6980 Safety)
+    // =========================================================================
+
+    @Test
+    fun testDiscoverySocketPauseAndResume() = runTest {
+        val testDispatcher = StandardTestDispatcher(testScheduler)
+        val testScope = TestScope(testDispatcher)
+        val manager = VbanDiscoveryManager(
+            ioDispatcher = testDispatcher,
+            externalScope = testScope
+        )
+
+        manager.start()
+        assertTrue("Discovery should be scanning after start()", manager.isScanning.value)
+
+        manager.pauseDiscoverySocket()
+        assertFalse("Discovery should not be scanning after pauseDiscoverySocket()", manager.isScanning.value)
+
+        manager.resumeDiscoverySocket()
+        assertTrue("Discovery should be scanning after resumeDiscoverySocket()", manager.isScanning.value)
+
+        manager.stop()
+        assertFalse("Discovery should not be scanning after stop()", manager.isScanning.value)
+    }
+
+    @Test
+    fun testPauseWhenAlreadyStoppedIsSafe() = runTest {
+        val testDispatcher = StandardTestDispatcher(testScheduler)
+        val testScope = TestScope(testDispatcher)
+        val manager = VbanDiscoveryManager(
+            ioDispatcher = testDispatcher,
+            externalScope = testScope
+        )
+
+        assertFalse(manager.isScanning.value)
+        manager.pauseDiscoverySocket()
+        assertFalse(manager.isScanning.value)
+    }
+
+    // =========================================================================
+    // 5. One-Shot Auto-Connect State Machine Tests
+    // =========================================================================
+
+    @Test
+    fun testAutoConnectInitialState() {
+        val autoConnect = AutoConnectManager()
+        assertFalse(autoConnect.hasAutoConnectedThisSession)
+        assertFalse(autoConnect.userRequestedStop)
+    }
+
+    @Test
+    fun testAutoConnectSingleStreamSuccess() {
+        val autoConnect = AutoConnectManager()
+        val stream = DiscoveredStream(
+            streamName = "Stream1",
+            sourceIp = "192.168.1.50",
+            port = 6980,
+            sampleRate = 48000,
+            channelCount = 2,
+            bitDepth = 16,
+            lastSeenMs = 1000L
+        )
+
+        val target = autoConnect.shouldAutoConnect(
+            discoveredStreams = listOf(stream),
+            isRunning = false
+        )
+
+        assertNotNull("Should auto-connect when exactly 1 stream is discovered and engine is idle", target)
+        assertEquals("Stream1", target?.streamName)
+        assertEquals("192.168.1.50", target?.sourceIp)
+    }
+
+    @Test
+    fun testAutoConnectRejectsWhenRunning() {
+        val autoConnect = AutoConnectManager()
+        val stream = DiscoveredStream(
+            streamName = "Stream1",
+            sourceIp = "192.168.1.50",
+            port = 6980,
+            sampleRate = 48000,
+            channelCount = 2,
+            bitDepth = 16,
+            lastSeenMs = 1000L
+        )
+
+        val target = autoConnect.shouldAutoConnect(
+            discoveredStreams = listOf(stream),
+            isRunning = true
+        )
+
+        assertNull("Should not auto-connect when audio engine is already running", target)
+    }
+
+    @Test
+    fun testAutoConnectRejectsMultipleStreams() {
+        val autoConnect = AutoConnectManager()
+        val stream1 = DiscoveredStream("Stream1", "192.168.1.50", 6980, 48000, 2, 16, 1000L)
+        val stream2 = DiscoveredStream("Stream2", "192.168.1.51", 6980, 48000, 2, 16, 1000L)
+
+        val target = autoConnect.shouldAutoConnect(
+            discoveredStreams = listOf(stream1, stream2),
+            isRunning = false
+        )
+
+        assertNull("Should not auto-connect when multiple streams are discovered", target)
+    }
+
+    @Test
+    fun testAutoConnectRejectsEmptyStreams() {
+        val autoConnect = AutoConnectManager()
+
+        val target = autoConnect.shouldAutoConnect(
+            discoveredStreams = emptyList<DiscoveredStream>(),
+            isRunning = false
+        )
+
+        assertNull("Should not auto-connect when no streams are discovered", target)
+    }
+
+    @Test
+    fun testAutoConnectIsStrictlyOneShotPerSession() {
+        val autoConnect = AutoConnectManager()
+        val stream = DiscoveredStream("Stream1", "192.168.1.50", 6980, 48000, 2, 16, 1000L)
+
+        // First evaluation succeeds
+        val target = autoConnect.shouldAutoConnect(listOf(stream), isRunning = false)
+        assertNotNull(target)
+
+        // Mark as connected
+        autoConnect.markAutoConnected()
+        assertTrue(autoConnect.hasAutoConnectedThisSession)
+
+        // Subsequent evaluation must yield null even if stream is still active and engine stopped
+        val subsequentTarget = autoConnect.shouldAutoConnect(listOf(stream), isRunning = false)
+        assertNull("Auto-connect must not fire more than once per session", subsequentTarget)
+    }
+
+    @Test
+    fun testAutoConnectSessionGuardBlocksReconnectAfterUserStop() {
+        val autoConnect = AutoConnectManager()
+        val stream = DiscoveredStream("Stream1", "192.168.1.50", 6980, 48000, 2, 16, 1000L)
+
+        // User stops playback manually
+        autoConnect.recordUserStop()
+        assertTrue(autoConnect.userRequestedStop)
+
+        // Even if hasAutoConnectedThisSession is false and single stream is present, reconnect is blocked
+        val target = autoConnect.shouldAutoConnect(listOf(stream), isRunning = false)
+        assertNull("Auto-connect must be blocked after user explicitly stops playback", target)
+    }
+
+    @Test
+    fun testAutoConnectReset() {
+        val autoConnect = AutoConnectManager()
+        val stream = DiscoveredStream("Stream1", "192.168.1.50", 6980, 48000, 2, 16, 1000L)
+
+        autoConnect.markAutoConnected()
+        autoConnect.recordUserStop()
+        assertNull(autoConnect.shouldAutoConnect(listOf(stream), isRunning = false))
+
+        autoConnect.reset()
+        assertFalse(autoConnect.hasAutoConnectedThisSession)
+        assertFalse(autoConnect.userRequestedStop)
+
+        val target = autoConnect.shouldAutoConnect(listOf(stream), isRunning = false)
+        assertNotNull("Auto-connect should be re-enabled after explicit reset()", target)
+    }
+
+    @Test
+    fun testLocalIpAddressResolves() {
+        val ip = VbanDiscoveryManager.getLocalIpAddress()
+        assertNotNull(ip)
+        assertTrue(ip.isNotEmpty())
+    }
 }

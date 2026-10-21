@@ -118,6 +118,12 @@ void ClockDriftCompensator::reset() noexcept {
     m_telemetrySmoothedWatermark.store(targetFrames, std::memory_order_relaxed);
     m_telemetrySmoothedPercent.store(targetPct, std::memory_order_relaxed);
     m_telemetryRawPercent.store(targetPct, std::memory_order_relaxed);
+
+    m_glitchCount.store(0, std::memory_order_relaxed);
+    m_unrecoverableDrops.store(0, std::memory_order_relaxed);
+    m_targetOccupancyPercent.store(m_config.targetOccupancyPercent, std::memory_order_relaxed);
+    const float baseMs = m_baseTargetLatencyMs.load(std::memory_order_relaxed);
+    m_targetWatermarkMs.store(baseMs > 0.0f ? baseMs : 5.0f, std::memory_order_relaxed);
 }
 
 void ClockDriftCompensator::setTargetLatencyMs(float targetMs, uint32_t sampleRate) noexcept {
@@ -125,9 +131,28 @@ void ClockDriftCompensator::setTargetLatencyMs(float targetMs, uint32_t sampleRa
         return;
     }
     m_sampleRate = sampleRate;
+    m_baseTargetLatencyMs.store(targetMs, std::memory_order_relaxed);
+    m_targetWatermarkMs.store(targetMs, std::memory_order_relaxed);
     const double targetFrames = (static_cast<double>(targetMs) * 0.001) * sampleRate;
     const double targetPct = (targetFrames / static_cast<double>(m_config.ringBufferCapacity)) * 100.0;
-    m_config.targetOccupancyPercent = std::clamp(targetPct, 0.5, 95.0);
+    const double clampedPct = std::clamp(targetPct, 0.01, 95.0);
+    m_targetOccupancyPercent.store(clampedPct, std::memory_order_relaxed);
+    m_config.targetOccupancyPercent = clampedPct;
+}
+
+void ClockDriftCompensator::setNetworkJitter(float jitterMs, uint32_t burstFrames) noexcept {
+    const float sr = (m_sampleRate > 0) ? static_cast<float>(m_sampleRate) : 48000.0f;
+    const float burstMs = (burstFrames > 0) ? (static_cast<float>(burstFrames) * 1000.0f / sr) : 4.0f;
+    const float baseMs = m_baseTargetLatencyMs.load(std::memory_order_relaxed);
+    float targetMs = std::max(baseMs, burstMs + 2.5f * jitterMs);
+    targetMs = std::clamp(targetMs, std::max(5.0f, baseMs), std::max(25.0f, baseMs));
+    m_targetWatermarkMs.store(targetMs, std::memory_order_relaxed);
+
+    const double targetFrames = (static_cast<double>(targetMs) * 0.001) * static_cast<double>(sr);
+    const double targetPct = (targetFrames / static_cast<double>(m_config.ringBufferCapacity)) * 100.0;
+    const double clampedPct = std::clamp(targetPct, 0.01, 95.0);
+    m_targetOccupancyPercent.store(clampedPct, std::memory_order_relaxed);
+    m_config.targetOccupancyPercent = clampedPct;
 }
 
 void ClockDriftCompensator::reconfigure(uint32_t sampleRate, uint16_t channels) noexcept {
@@ -150,7 +175,7 @@ float ClockDriftCompensator::update(size_t currentWatermarkFrames, double dt) no
     const double filteredPercent = (filteredFrames / cap) * 100.0;
 
     // 2. Compute error relative to target watermark
-    const double errorPercent = filteredPercent - m_config.targetOccupancyPercent;
+    const double errorPercent = filteredPercent - m_targetOccupancyPercent.load(std::memory_order_relaxed);
 
     // 3. Update PI servo controller with anti-windup clamping
     const double rawCorrectionPpm = m_piServo.update(errorPercent, dt);

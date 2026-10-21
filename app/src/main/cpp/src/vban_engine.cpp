@@ -26,62 +26,10 @@ VbanEngine::~VbanEngine() {
     stop();
 }
 
-bool VbanEngine::verifyCpp20AndOboeEnvironment() {
-    LOGI("=== Initializing VBAN Engine C++20 & Oboe Verification ===");
-
-    // 1. Verify C++20 compiler version
-    #if defined(__cplusplus)
-        LOGI("Detected __cplusplus: %ld", __cplusplus);
-        #if __cplusplus < 202002L
-        LOGW("Warning: __cplusplus is %ld, expected >= 202002L for C++20", __cplusplus);
-        #endif
-    #endif
-
-    // 2. Verify C++20 <bit> endianness
-    constexpr bool isLittle = (std::endian::native == std::endian::little);
-    LOGI("C++20 std::endian check: %s", isLittle ? "Little-Endian (ARM/x86 native)" : "Big-Endian");
-
-    // 3. Verify C++20 std::span
-    constexpr float testArray[] = {0.0f, 0.25f, 0.5f, 1.0f};
-    std::span<const float> testSpan{testArray};
-    if (testSpan.size() != 4 || testSpan[3] != 1.0f) {
-        LOGE("C++20 std::span validation failed!");
-        return false;
-    }
-    LOGI("C++20 std::span validated successfully (size=%zu)", testSpan.size());
-
-    // 4. Verify C++20 Concept usage
-    static_assert(AudioSampleType<float>, "float must satisfy AudioSampleType");
-    static_assert(AudioSampleType<int16_t>, "int16_t must satisfy AudioSampleType");
-    static_assert(AudioSampleType<int32_t>, "int32_t must satisfy AudioSampleType");
-    LOGI("C++20 concepts validated successfully");
-
-    // 5. Verify Oboe Prefab linkage and AudioStreamBuilder instantiation
-    oboe::AudioStreamBuilder builder;
-    builder.setDirection(oboe::Direction::Output);
-    builder.setPerformanceMode(oboe::PerformanceMode::LowLatency);
-    builder.setSharingMode(oboe::SharingMode::Exclusive);
-    builder.setFormat(oboe::AudioFormat::Float);
-    builder.setChannelCount(oboe::ChannelCount::Stereo);
-    builder.setSampleRate(48000);
-
-    const char* oboeVersion = oboe::getVersionText();
-    LOGI("Oboe AudioStreamBuilder instantiated. Oboe library version: %s",
-         oboeVersion ? oboeVersion : "unknown");
-
-    LOGI("=== C++20 & Oboe Verification PASSED ===");
-    return true;
-}
-
 bool VbanEngine::initialize() {
     if (initialized_.load(std::memory_order_acquire)) {
         LOGI("VbanEngine already initialized");
         return true;
-    }
-
-    if (!verifyCpp20AndOboeEnvironment()) {
-        LOGE("VbanEngine environment verification failed!");
-        return false;
     }
 
     parser_.reset();
@@ -138,6 +86,9 @@ bool VbanEngine::start(const std::string& listenIp, uint16_t port, const std::st
         playerConfig.channelCount = m_currentChannels.load(std::memory_order_acquire);
         playerConfig.deviceId = deviceId;
         player_->start(playerConfig);
+
+        const int32_t burst = player_->getFramesPerBurst() > 0 ? player_->getFramesPerBurst() : 192;
+        compensator_.setNetworkJitter(0.0f, static_cast<uint32_t>(burst));
     }
 
     // Launch high-priority UDP network receiver
@@ -154,6 +105,8 @@ bool VbanEngine::start(const std::string& listenIp, uint16_t port, const std::st
 
     if (!receiver_->start(netConfig)) {
         LOGE("Failed to start VbanReceiver on %s:%u", listenIp_.c_str(), listenPort_);
+        stop();
+        return false;
     }
 
     running_.store(true, std::memory_order_release);
@@ -233,6 +186,8 @@ void VbanEngine::reconfigWorkerLoop() {
 
         if (player_) {
             player_->reconfigure(newRate, newChannels, currentDeviceId_.load(std::memory_order_relaxed));
+            const int32_t burst = player_->getFramesPerBurst() > 0 ? player_->getFramesPerBurst() : 192;
+            compensator_.setNetworkJitter(0.0f, static_cast<uint32_t>(burst));
         }
 
         m_currentSampleRate.store(newRate, std::memory_order_release);
@@ -247,6 +202,8 @@ bool VbanEngine::reconfigureStream(const AudioStreamConfig& config) {
     m_currentChannels.store(config.channelCount, std::memory_order_release);
     if (player_) {
         player_->reconfigure(config.sampleRate, config.channelCount, config.targetDeviceId);
+        const int32_t burst = player_->getFramesPerBurst() > 0 ? player_->getFramesPerBurst() : 192;
+        compensator_.setNetworkJitter(0.0f, static_cast<uint32_t>(burst));
     }
     return true;
 }
@@ -262,17 +219,31 @@ NativeTelemetry VbanEngine::getTelemetry() const noexcept {
         telem.totalPacketsReceived = rxTelem.totalPacketsReceived;
         telem.lostPackets = rxTelem.lostPackets;
         telem.jitterMs = rxTelem.jitterMs;
-        telem.sampleRate = rxTelem.activeSampleRate ? rxTelem.activeSampleRate : defaultRate;
-        telem.channelCount = rxTelem.activeChannels ? rxTelem.activeChannels : defaultCh;
-        telem.bitDepth = rxTelem.activeBitDepth ? rxTelem.activeBitDepth : 24;
+        if (rxTelem.totalPacketsReceived > 0) {
+            telem.sampleRate = rxTelem.activeSampleRate ? rxTelem.activeSampleRate : defaultRate;
+            telem.channelCount = rxTelem.activeChannels ? rxTelem.activeChannels : defaultCh;
+            telem.bitDepth = rxTelem.activeBitDepth ? rxTelem.activeBitDepth : 16;
+        } else {
+            telem.sampleRate = 0;
+            telem.channelCount = 0;
+            telem.bitDepth = 0;
+        }
+        telem.unrecoverableDrops = receiver_->getUnrecoverableDrops();
     } else {
         const auto parserTelem = parser_.getTelemetry();
         telem.totalPacketsReceived = parserTelem.totalPacketsReceived;
         telem.lostPackets = parserTelem.lostPackets;
         telem.jitterMs = static_cast<float>(parserTelem.jitterMs);
-        telem.sampleRate = defaultRate;
-        telem.channelCount = defaultCh;
-        telem.bitDepth = 24;
+        if (parserTelem.totalPacketsReceived > 0) {
+            telem.sampleRate = defaultRate;
+            telem.channelCount = defaultCh;
+            telem.bitDepth = 16;
+        } else {
+            telem.sampleRate = 0;
+            telem.channelCount = 0;
+            telem.bitDepth = 0;
+        }
+        telem.unrecoverableDrops = receiver_ ? receiver_->getUnrecoverableDrops() : 0;
     }
 
     telem.bufferOccupancyPercent = ringBuffer_.occupancyPercent();
@@ -291,6 +262,9 @@ NativeTelemetry VbanEngine::getTelemetry() const noexcept {
 
     telem.peakLevelLeft = peakL;
     telem.peakLevelRight = peakR;
+
+    telem.targetWatermarkMs = compensator_.getTargetWatermarkMs();
+    telem.glitchCount = compensator_.getGlitchCount();
 
     return telem;
 }
@@ -328,10 +302,15 @@ bool VbanEngine::processPacket(const uint8_t* buffer, size_t size) {
     }
 
     ringBuffer_.write(staging.data(), totalSamples);
+
+    const int32_t burst = (player_ && player_->getFramesPerBurst() > 0) ? player_->getFramesPerBurst() : 192;
+    compensator_.setNetworkJitter(static_cast<float>(parser_.getTelemetry().jitterMs), static_cast<uint32_t>(burst));
+
     return true;
 }
 
 bool VbanEngine::setTargetLatencyMs(float latencyMs) {
+    compensator_.setBaseTargetLatencyMs(latencyMs);
     const uint32_t currentRate = m_currentSampleRate.load(std::memory_order_relaxed);
     compensator_.setTargetLatencyMs(latencyMs, currentRate > 0 ? currentRate : 48000);
     LOGI("VbanEngine target latency set to %.1f ms (rate %u Hz)", latencyMs, currentRate);

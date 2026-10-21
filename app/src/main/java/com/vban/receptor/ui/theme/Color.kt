@@ -2,18 +2,35 @@ package com.vban.receptor.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// OLED Audiophile Palette
-val DarkBackground = Color(0xFF0A0E17)
-val SurfaceDark = Color(0xFF111827)
-val SurfaceVariantDark = Color(0xFF1B2436)
-val OutlineDark = Color(0xFF2E3D56)
+// ============================================================================
+// Minimalist Bauhaus Palette (OLED Pure Black & High Contrast)
+// ============================================================================
+val OledBlack = Color(0xFF000000)
+val DarkSurface = Color(0xFF0A0A0A)
+val DarkSurfaceVariant = Color(0xFF141414)
+val DarkBorder = Color(0xFF262626)
 
-// Neon & High-Res Accents
+// Functional Status Accents
+val LiveGreen = Color(0xFF34C759)
+val StopRed = Color(0xFFFF3B30)
+
+// Minimalist High-Contrast Typography Grays
+val TextPrimary = Color(0xFFFFFFFF)
+val TextMuted = Color(0xFF737373)
+val TextSecondary = Color(0xFFA3A3A3)
+
+// ============================================================================
+// Compatibility Aliases for components transitioning to Bauhaus design
+// ============================================================================
+val DarkBackground = OledBlack
+val SurfaceDark = DarkSurface
+val SurfaceVariantDark = DarkSurfaceVariant
+val OutlineDark = DarkBorder
+val OnSurfaceLight = TextPrimary
+val OnSurfaceMuted = TextMuted
+
 val CyanAccent = Color(0xFF00E5FF)
 val GoldAccent = Color(0xFFFFD600)
-val EmeraldGreen = Color(0xFF00E676)
-val CrimsonRed = Color(0xFFFF1744)
+val EmeraldGreen = LiveGreen
+val CrimsonRed = StopRed
 val WarningAmber = Color(0xFFF59E0B)
-
-val OnSurfaceLight = Color(0xFFF8FAFC)
-val OnSurfaceMuted = Color(0xFF94A3B8)

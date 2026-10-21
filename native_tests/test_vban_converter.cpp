@@ -242,63 +242,8 @@ TEST_CASE("converter_float32_buffer_conversion") {
 }
 
 // ==============================================================================
-// 5. Channel Interleaving & Deinterleaving Roundtrip Tests
+// 5. Channel Telemetry Tests
 // ==============================================================================
-
-TEST_CASE("channel_stereo_interleaving_roundtrip") {
-    constexpr size_t kFrames = 8;
-    std::vector<float> origLeft = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
-    std::vector<float> origRight = {-0.1f, -0.2f, -0.3f, -0.4f, -0.5f, -0.6f, -0.7f, -0.8f};
-
-    std::vector<float> interleaved(kFrames * 2, 0.0f);
-    interleaveStereo(origLeft.data(), origRight.data(), interleaved.data(), kFrames);
-
-    // Verify interleaved structure: [L0, R0, L1, R1, ...]
-    for (size_t f = 0; f < kFrames; ++f) {
-        EXPECT_NEAR(interleaved[f * 2 + 0], origLeft[f], 1e-7f);
-        EXPECT_NEAR(interleaved[f * 2 + 1], origRight[f], 1e-7f);
-    }
-
-    std::vector<float> outLeft(kFrames, 0.0f);
-    std::vector<float> outRight(kFrames, 0.0f);
-    deinterleaveStereo(interleaved.data(), outLeft.data(), outRight.data(), kFrames);
-
-    for (size_t f = 0; f < kFrames; ++f) {
-        EXPECT_NEAR(outLeft[f], origLeft[f], 1e-7f);
-        EXPECT_NEAR(outRight[f], origRight[f], 1e-7f);
-    }
-}
-
-TEST_CASE("channel_multichannel_planar_roundtrip") {
-    constexpr size_t kFrames = 4;
-    constexpr size_t kChannels = 6; // 5.1 Surround sound
-    constexpr size_t kTotal = kFrames * kChannels;
-
-    std::vector<float> interleaved(kTotal);
-    for (size_t f = 0; f < kFrames; ++f) {
-        for (size_t ch = 0; ch < kChannels; ++ch) {
-            interleaved[f * kChannels + ch] = static_cast<float>(ch * 10 + f) * 0.01f;
-        }
-    }
-
-    std::vector<float> planar(kTotal, 0.0f);
-    deinterleave(interleaved.data(), planar.data(), kFrames, kChannels);
-
-    // Verify planar ordering: Channel 0 for all frames, then Channel 1, etc.
-    for (size_t ch = 0; ch < kChannels; ++ch) {
-        for (size_t f = 0; f < kFrames; ++f) {
-            const float expected = static_cast<float>(ch * 10 + f) * 0.01f;
-            EXPECT_NEAR(planar[ch * kFrames + f], expected, 1e-7f);
-        }
-    }
-
-    std::vector<float> reconstructed(kTotal, 0.0f);
-    interleave(planar.data(), reconstructed.data(), kFrames, kChannels);
-
-    for (size_t i = 0; i < kTotal; ++i) {
-        EXPECT_NEAR(reconstructed[i], interleaved[i], 1e-7f);
-    }
-}
 
 TEST_CASE("channel_telemetry_peak_levels") {
     const std::vector<float> interleaved = {

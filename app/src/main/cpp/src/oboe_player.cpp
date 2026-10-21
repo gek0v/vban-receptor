@@ -54,7 +54,7 @@ bool OboePlayer::start(const OboePlayerConfig& config) {
         return false;
     }
 
-    m_compensator.triggerFadeIn();
+    m_isPrerolling.store(true, std::memory_order_release);
     m_playing.store(true, std::memory_order_release);
     LOGI("OboePlayer started: %u Hz, %u channels, device %d, Exclusive AAudio",
          config.sampleRate, config.channelCount, config.deviceId);
@@ -70,6 +70,7 @@ void OboePlayer::stop() {
 
     LOGI("Stopping OboePlayer...");
     m_playing.store(false, std::memory_order_release);
+    m_isPrerolling.store(true, std::memory_order_release);
 
     closeStreamLocked();
     LOGI("OboePlayer stopped successfully");
@@ -125,7 +126,7 @@ bool OboePlayer::reconfigure(uint32_t sampleRate, uint16_t channels, int32_t dev
     }
 
     // 5. Soft 128-sample cosine fade-in on newly opened stream
-    m_compensator.triggerFadeIn();
+    m_isPrerolling.store(true, std::memory_order_release);
     m_playing.store(true, std::memory_order_release);
     LOGI("OboePlayer reconfiguration complete and playing");
     return true;
@@ -203,6 +204,25 @@ oboe::DataCallbackResult OboePlayer::onAudioReady(oboe::AudioStream* /*stream*/,
 
     float* const outBuffer = static_cast<float*>(audioData);
     const uint16_t channels = m_activeChannels.load(std::memory_order_relaxed);
+    if (channels == 0) [[unlikely]] {
+        return oboe::DataCallbackResult::Continue;
+    }
+
+    const size_t availableElements = m_ringBuffer.availableRead();
+    const size_t availableFrames = availableElements / channels;
+    const float targetMs = m_compensator.getTargetWatermarkMs();
+    const uint32_t sr = m_config.sampleRate > 0 ? m_config.sampleRate : 48000;
+    const size_t targetWatermarkFrames = static_cast<size_t>((targetMs * 0.001f) * static_cast<float>(sr));
+    const size_t minPrerollFrames = std::max(static_cast<size_t>(numFrames) * 2, targetWatermarkFrames);
+
+    if (m_isPrerolling.load(std::memory_order_relaxed)) {
+        if (availableFrames < minPrerollFrames) {
+            std::memset(outBuffer, 0, static_cast<size_t>(numFrames) * channels * sizeof(float));
+            return oboe::DataCallbackResult::Continue;
+        }
+        m_isPrerolling.store(false, std::memory_order_relaxed);
+        m_compensator.triggerFadeIn();
+    }
 
     const size_t framesRendered = m_compensator.process(
         m_ringBuffer,
@@ -213,6 +233,7 @@ oboe::DataCallbackResult OboePlayer::onAudioReady(oboe::AudioStream* /*stream*/,
 
     if (framesRendered < static_cast<size_t>(numFrames)) [[unlikely]] {
         m_underrunCount.fetch_add(1, std::memory_order_relaxed);
+        m_isPrerolling.store(true, std::memory_order_relaxed);
     }
 
     float maxL = 0.0f;
@@ -298,7 +319,7 @@ void OboePlayer::restartWorkerLoop() {
             if (openStreamLocked()) {
                 oboe::Result res = m_stream->requestStart();
                 if (res == oboe::Result::OK) {
-                    m_compensator.triggerFadeIn();
+                    m_isPrerolling.store(true, std::memory_order_release);
                     restarted = true;
                     LOGI("Stream successfully recovered on attempt %d", attempt);
                     break;

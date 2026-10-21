@@ -4,14 +4,33 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Rich Audiophile Scarlet Red Base -->
+    <!-- Bauhaus OLED Pure Black Base -->
     <path
-        android:fillColor="#DC2626"
+        android:fillColor="#000000"
         android:pathData="M0,0h108v108h-108z" />
-    <!-- Vibrant Inner Crimson Disc for Depth -->
+
+    <!-- Subtle Technical Dark Instrument Disc -->
     <path
-        android:strokeColor="#30FFFFFF"
+        android:fillColor="#0A0A0A"
+        android:pathData="M54,54m-44,0a44,44 0 1,0 88,0a44,44 0 1,0 -88,0" />
+
+    <!-- Outer Precision Guide Ring -->
+    <path
+        android:strokeColor="#222222"
         android:strokeWidth="1.2"
-        android:fillColor="#EF4444"
-        android:pathData="M54,54m-42,0a42,42 0 1,0 84,0a42,42 0 1,0 -84,0" />
+        android:fillColor="#0E0E0E"
+        android:pathData="M54,54m-35,0a35,35 0 1,0 70,0a35,35 0 1,0 -70,0" />
+
+    <!-- Inner Subtle Reticle Circle -->
+    <path
+        android:strokeColor="#1A1A1A"
+        android:strokeWidth="0.8"
+        android:pathData="M54,54m-22,0a22,22 0 1,0 44,0a22,22 0 1,0 -44,0" />
+
+    <!-- Bauhaus Reticle Alignment Ticks (North, South, West, East) -->
+    <path
+        android:strokeColor="#333333"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="square"
+        android:pathData="M54,16 L54,22 M54,86 L54,92 M16,54 L22,54 M86,54 L92,54" />
 </vector>

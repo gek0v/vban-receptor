@@ -7,13 +7,18 @@
 #include <string_view>
 #include <cstring>
 #include <cctype>
-#include <ostream>
 
 namespace vban {
 
 // ==============================================================================
 // VBAN Protocol Constants
 // ==============================================================================
+
+/**
+ * Capacity of the central audio SPSC ring buffer:
+ * 2^18 = 262,144 frames (341.3 ms at 768 kHz, ~2 MB RAM).
+ */
+inline constexpr size_t VBAN_RING_BUFFER_CAPACITY = 262144;
 
 /**
  * FourCC magic bytes 'V', 'B', 'A', 'N' in Little-Endian byte order (0x4E414256).
@@ -73,18 +78,6 @@ enum class VBanDataType : uint8_t {
     Bits12  = 0x06,
     Bits10  = 0x07
 };
-
-inline std::ostream& operator<<(std::ostream& os, VBanSubProtocol sp) {
-    return os << static_cast<int>(sp);
-}
-
-inline std::ostream& operator<<(std::ostream& os, VBanCodec c) {
-    return os << static_cast<int>(c);
-}
-
-inline std::ostream& operator<<(std::ostream& os, VBanDataType dt) {
-    return os << static_cast<int>(dt);
-}
 
 // ==============================================================================
 // Packed VBAN Header Structure (28 Bytes)

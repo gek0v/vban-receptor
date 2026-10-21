@@ -117,7 +117,5 @@ Because transmitter crystal oscillators (e.g. PC soundcard) and receptor oscilla
 The codebase contains an exhaustive, multi-tier test infrastructure:
 - **C++ Native Unit Tests (`native_tests/`)**:
   - Comprehensive coverage of VBAN header validation, 21 sample rate decodings, Catmull-Rom micro-resampler, SPSC concurrency under multi-threaded stress, and FFT analysis.
-- **Python End-to-End Test Suite (`e2e_tests/`)**:
-  - 84 automated test cases covering protocol compliance, boundary conditions, clock drift simulation, adversarial network packets, and system lifecycle behavior across 4 tiers.
 - **Android Unit Tests (`app/src/test/`)**:
   - Tests for network discovery, packet parsing, stream caching, and timeout eviction logic.

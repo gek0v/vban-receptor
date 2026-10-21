@@ -41,17 +41,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-/**
- * Representation of an audio output device for UI display.
- */
-data class AudioOutputDeviceItem(
-    val id: Int,
-    val name: String,
-    val type: Int,
-    val isUsb: Boolean,
-    val isBitPerfectSupported: Boolean
-)
+import com.vban.receptor.audio.AudioDevice
 
 private val GoldBadgeGradient = Brush.horizontalGradient(
     listOf(Color(0xFFFFD700), Color(0xFFFF9100))
@@ -65,15 +55,15 @@ private val CyanBadgeGradient = Brush.horizontalGradient(
  */
 @Composable
 fun DeviceSelector(
-    devices: List<AudioOutputDeviceItem>,
+    devices: List<AudioDevice>,
     selectedDeviceId: Int,
-    onDeviceSelected: (AudioOutputDeviceItem) -> Unit,
+    onDeviceSelected: (AudioDevice) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
     val currentDevice = devices.find { it.id == selectedDeviceId }
         ?: devices.firstOrNull()
-        ?: AudioOutputDeviceItem(0, "Default Audio HAL", AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, false, false)
+        ?: AudioDevice.SYSTEM_DEFAULT
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -160,7 +150,7 @@ fun DeviceSelector(
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Column {
                                         Text(device.name, fontWeight = FontWeight.Medium)
-                                        if (device.isBitPerfectSupported) {
+                                        if (device.isBitPerfectCapable) {
                                             Text(
                                                 "Bit-Perfect Direct Supported",
                                                 style = MaterialTheme.typography.labelSmall,
@@ -182,7 +172,7 @@ fun DeviceSelector(
             Spacer(modifier = Modifier.height(10.dp))
 
             // Audiophile Bit-Perfect Status Badge
-            if (currentDevice.isBitPerfectSupported) {
+            if (currentDevice.isBitPerfectCapable) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
