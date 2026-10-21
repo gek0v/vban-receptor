@@ -52,6 +52,7 @@ class VbanDiscoveryManager(
     private var listenerJob: Job? = null
     private var evictionJob: Job? = null
     private var activeSocket: MulticastSocket? = null
+    private var currentPort: Int = defaultPort
 
     private val lock = Any()
 
@@ -62,6 +63,7 @@ class VbanDiscoveryManager(
      */
     @Synchronized
     fun start(port: Int = defaultPort) {
+        currentPort = port
         if (_isScanning.value && activeSocket?.localPort == port) {
             Log.d(TAG, "Discovery already active on port $port")
             return
@@ -104,6 +106,48 @@ class VbanDiscoveryManager(
         }
 
         Log.i(TAG, "VBAN stream discovery stopped")
+    }
+
+    /**
+     * Pauses the discovery engine and cleanly closes the UDP socket to release port 6980
+     * for the native audio receiver while preserving discovered stream cache.
+     */
+    @Synchronized
+    fun pauseDiscoverySocket() {
+        if (!_isScanning.value) {
+            return
+        }
+
+        _isScanning.value = false
+
+        listenerJob?.cancel()
+        listenerJob = null
+
+        evictionJob?.cancel()
+        evictionJob = null
+
+        try {
+            activeSocket?.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing discovery socket on pause: ${e.message}")
+        } finally {
+            activeSocket = null
+        }
+
+        Log.i(TAG, "VBAN stream discovery paused")
+    }
+
+    /**
+     * Resumes the discovery engine, re-opening the UDP socket on the last configured port.
+     */
+    @Synchronized
+    fun resumeDiscoverySocket() {
+        if (_isScanning.value) {
+            return
+        }
+
+        start(currentPort)
+        Log.i(TAG, "VBAN stream discovery resumed on port $currentPort")
     }
 
     /**
