@@ -21,14 +21,14 @@ enum class LatencyProfile(
 ) {
     /**
      * AUTO Profile (Default):
-     * Target latency 5–25 ms.
-     * Dynamic RFC 3550 servo jitter buffer adaptation.
+     * Target latency 15–25 ms.
+     * Dynamic RFC 3550 servo jitter buffer adaptation with safe Wi-Fi baseline.
      */
     AUTO(
         id = "AUTO",
         displayName = "Auto (Adaptativo)",
-        subtitle = "5–25 ms · RFC 3550 Servo",
-        targetLatencyMsMin = 5.0f,
+        subtitle = "15–25 ms · RFC 3550 Servo",
+        targetLatencyMsMin = 15.0f,
         targetLatencyMsMax = 25.0f
     ),
 

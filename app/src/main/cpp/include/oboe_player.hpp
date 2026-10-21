@@ -127,6 +127,10 @@ public:
         return m_underrunCount.load(std::memory_order_relaxed);
     }
 
+    [[nodiscard]] bool isPrerolling() const noexcept {
+        return m_isPrerolling.load(std::memory_order_relaxed);
+    }
+
     [[nodiscard]] int32_t getActualBufferSize() const noexcept;
     [[nodiscard]] int32_t getFramesPerBurst() const noexcept;
     [[nodiscard]] int32_t getActualSampleRate() const noexcept;
@@ -150,6 +154,7 @@ private:
 
     OboePlayerConfig m_config{};
     std::atomic<bool> m_playing{false};
+    std::atomic<bool> m_isPrerolling{true};
     std::atomic<uint16_t> m_activeChannels{2};
 
     // Telemetry atomics

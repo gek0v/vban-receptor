@@ -288,6 +288,11 @@ bool VbanReceiver::start(const ReceiverSocketConfig& config) {
 
     m_config = config;
     m_parser.setTargetStreamName(config.streamName);
+    {
+        std::lock_guard<std::mutex> lock(m_streamNameMutex);
+        m_detectedStreamName = config.streamName;
+    }
+    m_workerStreamName = config.streamName;
     m_parser.reset();
     m_reorderQueue.reset();
     m_totalBytesReceived.store(0, std::memory_order_relaxed);
@@ -338,6 +343,12 @@ bool VbanReceiver::processDatagram(const uint8_t* buffer, size_t size, uint64_t 
     const ParseResult result = m_parser.parse(buffer, size, arrivalTimeNs, packet);
     if (result != ParseResult::Success) [[unlikely]] {
         return false;
+    }
+
+    if (!packet.streamName.empty() && m_workerStreamName != packet.streamName) {
+        m_workerStreamName = std::string(packet.streamName);
+        std::lock_guard<std::mutex> lock(m_streamNameMutex);
+        m_detectedStreamName = m_workerStreamName;
     }
 
     // 1. Dynamic stream format change detection
@@ -515,6 +526,10 @@ ReceiverTelemetry VbanReceiver::getTelemetry() const noexcept {
     telem.grantedBufferSize = m_grantedBufferSize;
     telem.isMulticast = m_isMulticastJoined;
     telem.isRunning = m_running.load(std::memory_order_relaxed);
+    {
+        std::lock_guard<std::mutex> lock(m_streamNameMutex);
+        std::strncpy(telem.activeStreamName, m_detectedStreamName.c_str(), 16);
+    }
     return telem;
 }
 

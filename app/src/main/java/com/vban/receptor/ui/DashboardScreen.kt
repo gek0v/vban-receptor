@@ -28,6 +28,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
@@ -61,6 +63,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -108,15 +113,21 @@ fun DashboardScreen(
     val latencyProfile by NativeVbanEngine.latencyProfile.collectAsState()
     val spectrumBands by NativeVbanEngine.spectrumBands.collectAsState()
 
-    val discoveryManager = remember { VbanDiscoveryManager() }
+    val context = LocalContext.current
+    val discoveryManager = remember { VbanDiscoveryManager(context = context.applicationContext) }
     val autoConnectManager = remember { AutoConnectManager() }
     val discoveredStreams by discoveryManager.discoveredStreams.collectAsState()
     val isScanning by discoveryManager.isScanning.collectAsState()
 
+    var deviceLocalIp by remember { mutableStateOf(VbanDiscoveryManager.getLocalIpAddress(context)) }
+    LaunchedEffect(Unit) {
+        deviceLocalIp = VbanDiscoveryManager.getLocalIpAddress(context)
+    }
+
     var listenIp by remember { mutableStateOf("0.0.0.0") }
     var transmitterIp by remember { mutableStateOf("") }
     var portText by remember { mutableStateOf("6980") }
-    var streamName by remember { mutableStateOf("Stream1") }
+    var streamName by remember { mutableStateOf("") }
     var selectedDeviceId by remember { mutableIntStateOf(0) }
 
     var showManualConfig by remember { mutableStateOf(false) }
@@ -176,6 +187,12 @@ fun DashboardScreen(
             DashboardTopBar(
                 isRunning = isRunning,
                 sampleRate = telemetry.sampleRate
+            )
+
+            // Local IP Address Banner with one-tap copy for Voicemeeter setup
+            DeviceIpBanner(
+                localIp = deviceLocalIp,
+                port = portText
             )
 
             // 2. Real-Time Latency Hero Dial (48sp bold readout, health status caption)
@@ -437,7 +454,7 @@ private fun ActiveStreamCard(
             ) {
                 Column {
                     Text(
-                        text = streamName.ifBlank { "Stream1" },
+                        text = streamName.ifBlank { "Cualquier Flujo (Auto)" },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
@@ -784,7 +801,15 @@ private fun ManualConnectionCard(
                     OutlinedTextField(
                         value = streamName,
                         onValueChange = onStreamNameChange,
-                        label = { Text("Nombre del Flujo (Filtro VBAN)", fontFamily = FontFamily.Monospace) },
+                        label = { Text("Nombre del Flujo (Vacío = Aceptar Todo)", fontFamily = FontFamily.Monospace) },
+                        placeholder = { Text("Cualquiera (Modo Promiscuo)", fontFamily = FontFamily.Monospace, color = TextMuted) },
+                        supportingText = {
+                            Text(
+                                text = if (streamName.isBlank()) "Modo Promiscuo activo: aceptará cualquier flujo desde Voicemeeter" else "Filtrando por: $streamName",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (streamName.isBlank()) LiveGreen else TextMuted
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -798,6 +823,90 @@ private fun ManualConnectionCard(
                             focusedContainerColor = DarkSurfaceVariant,
                             unfocusedContainerColor = DarkSurfaceVariant
                         )
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Prominent Local IP Banner showing the device's IP on the Wi-Fi LAN
+ * with a quick copy action so the user can paste it into Voicemeeter 'IP Address To'.
+ */
+@Composable
+fun DeviceIpBanner(
+    localIp: String,
+    port: String,
+    modifier: Modifier = Modifier
+) {
+    val clipboardManager = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable {
+                if (localIp != "0.0.0.0") {
+                    clipboardManager.setText(AnnotatedString(localIp))
+                    copied = true
+                }
+            },
+        shape = RoundedCornerShape(10.dp),
+        color = DarkSurface,
+        border = BorderStroke(1.dp, if (copied) LiveGreen else DarkBorder)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "IP LOCAL DE ESTE DISPOSITIVO",
+                    style = HeroLabel,
+                    color = TextMuted,
+                    letterSpacing = 1.2.sp
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = if (localIp != "0.0.0.0") "$localIp:$port" else "0.0.0.0:$port (Conectando a Wi-Fi)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    color = if (localIp != "0.0.0.0") TextPrimary else TextMuted
+                )
+                Text(
+                    text = "Configura esta IP en 'IP Address To' de Voicemeeter en tu PC",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary
+                )
+            }
+
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = if (copied) LiveGreen.copy(alpha = 0.2f) else DarkSurfaceVariant,
+                border = BorderStroke(1.dp, if (copied) LiveGreen else DarkBorder)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                        contentDescription = "Copiar IP",
+                        tint = if (copied) LiveGreen else TextSecondary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = if (copied) "COPIADO" else "COPIAR",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = if (copied) LiveGreen else TextSecondary
                     )
                 }
             }

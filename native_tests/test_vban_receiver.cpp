@@ -545,3 +545,38 @@ TEST_CASE("receiver_buffer_saturation_channel_alignment_preservation") {
     ASSERT_GT(totalSamplesRead, 0U);
     EXPECT_EQ(channelSwapViolations, 0U);
 }
+
+TEST_CASE("receiver_promiscuous_mode_accepts_arbitrary_stream_names") {
+    WsaGuard wsa;
+    vban::SpscRingBuffer<float, vban::VBAN_RING_BUFFER_CAPACITY> ringBuffer;
+    vban::VbanReceiver receiver(ringBuffer);
+
+    vban::ReceiverSocketConfig cfg;
+    cfg.listenIp = "127.0.0.1";
+    cfg.port = 17985;
+    cfg.streamName = ""; // Promiscuous mode
+
+    ASSERT_TRUE(receiver.start(cfg));
+
+    auto packet1 = createTestVbanPacket(3, 255, 1, vban::VBanDataType::Int16, "Voicemeeter");
+    auto* hdr1 = reinterpret_cast<vban::VBanHeader*>(packet1.data());
+    hdr1->nuFrame = 1;
+    EXPECT_TRUE(receiver.processDatagram(packet1.data(), packet1.size()));
+    EXPECT_EQ(receiver.getDetectedStreamName(), "Voicemeeter");
+
+    auto telem1 = receiver.getTelemetry();
+    EXPECT_EQ(std::string(telem1.activeStreamName), "Voicemeeter");
+    EXPECT_EQ(telem1.validPackets, 1U);
+
+    auto packet2 = createTestVbanPacket(3, 255, 1, vban::VBanDataType::Int16, "CustomStream2");
+    auto* hdr2 = reinterpret_cast<vban::VBanHeader*>(packet2.data());
+    hdr2->nuFrame = 2;
+    EXPECT_TRUE(receiver.processDatagram(packet2.data(), packet2.size()));
+    EXPECT_EQ(receiver.getDetectedStreamName(), "CustomStream2");
+
+    auto telem2 = receiver.getTelemetry();
+    EXPECT_EQ(std::string(telem2.activeStreamName), "CustomStream2");
+    EXPECT_EQ(telem2.validPackets, 2U);
+
+    receiver.stop();
+}

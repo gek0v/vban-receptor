@@ -1,5 +1,7 @@
 package com.vban.receptor.network
 
+import android.content.Context
+import android.net.wifi.WifiManager
 import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -36,7 +38,8 @@ class VbanDiscoveryManager(
     val defaultPort: Int = DEFAULT_PORT,
     private val evictionTimeoutMs: Long = DEFAULT_EVICTION_TIMEOUT_MS,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val externalScope: CoroutineScope? = null
+    private val externalScope: CoroutineScope? = null,
+    private val context: Context? = null
 ) : Closeable {
 
     private val scope = externalScope ?: CoroutineScope(ioDispatcher + SupervisorJob())
@@ -53,6 +56,9 @@ class VbanDiscoveryManager(
     private var evictionJob: Job? = null
     private var activeSocket: MulticastSocket? = null
     private var currentPort: Int = defaultPort
+
+    private var multicastLock: WifiManager.MulticastLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     private val lock = Any()
 
@@ -73,6 +79,8 @@ class VbanDiscoveryManager(
 
         _isScanning.value = true
 
+        acquireNetworkLocks()
+
         listenerJob = scope.launch(ioDispatcher) {
             runDiscoveryLoop(port)
         }
@@ -85,7 +93,7 @@ class VbanDiscoveryManager(
     }
 
     /**
-     * Stops the discovery engine and releases network sockets.
+     * Stops the discovery engine and releases network sockets and locks.
      */
     @Synchronized
     fun stop() {
@@ -96,6 +104,8 @@ class VbanDiscoveryManager(
 
         evictionJob?.cancel()
         evictionJob = null
+
+        releaseNetworkLocks()
 
         try {
             activeSocket?.close()
@@ -126,6 +136,8 @@ class VbanDiscoveryManager(
         evictionJob?.cancel()
         evictionJob = null
 
+        releaseNetworkLocks()
+
         try {
             activeSocket?.close()
         } catch (e: Exception) {
@@ -135,6 +147,55 @@ class VbanDiscoveryManager(
         }
 
         Log.i(TAG, "VBAN stream discovery paused")
+    }
+
+    private fun acquireNetworkLocks() {
+        val appContext = context?.applicationContext ?: return
+        val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
+
+        try {
+            if (multicastLock == null) {
+                multicastLock = wifiManager.createMulticastLock("VbanDiscoveryMulticastLock").apply {
+                    setReferenceCounted(false)
+                }
+            }
+            multicastLock?.acquire()
+            Log.d(TAG, "Discovery MulticastLock acquired")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire Discovery MulticastLock: ${e.message}")
+        }
+
+        try {
+            if (wifiLock == null) {
+                wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "VbanDiscoveryWifiLock").apply {
+                    setReferenceCounted(false)
+                }
+            }
+            wifiLock?.acquire()
+            Log.d(TAG, "Discovery WifiLock acquired")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire Discovery WifiLock: ${e.message}")
+        }
+    }
+
+    private fun releaseNetworkLocks() {
+        try {
+            if (multicastLock?.isHeld == true) {
+                multicastLock?.release()
+                Log.d(TAG, "Discovery MulticastLock released")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error releasing MulticastLock: ${e.message}")
+        }
+
+        try {
+            if (wifiLock?.isHeld == true) {
+                wifiLock?.release()
+                Log.d(TAG, "Discovery WifiLock released")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error releasing WifiLock: ${e.message}")
+        }
     }
 
     /**
@@ -234,6 +295,7 @@ class VbanDiscoveryManager(
         try {
             socket = MulticastSocket(null).apply {
                 reuseAddress = true
+                broadcast = true
                 soTimeout = SOCKET_TIMEOUT_MS
                 receiveBufferSize = SOCKET_BUFFER_SIZE
                 bind(InetSocketAddress(port))
@@ -437,6 +499,47 @@ class VbanDiscoveryManager(
                 bitDepth = bitDepth,
                 lastSeenMs = timestampMs
             )
+        }
+
+        /**
+         * Resolves the primary local IPv4 address (e.g. 192.168.x.x) on the active network interface.
+         * Prioritizes active Wi-Fi (wlan) and Ethernet (eth) adapters.
+         */
+        fun getLocalIpAddress(context: Context? = null): String {
+            try {
+                val interfaces = NetworkInterface.getNetworkInterfaces() ?: return "0.0.0.0"
+                var fallbackIp: String? = null
+                val nifList = interfaces.toList()
+                val sortedNifs = nifList.sortedByDescending { nif ->
+                    val name = nif.name.lowercase()
+                    when {
+                        name.startsWith("wlan") -> 2
+                        name.startsWith("eth") -> 1
+                        else -> 0
+                    }
+                }
+
+                for (nif in sortedNifs) {
+                    if (!nif.isUp || nif.isLoopback) continue
+                    for (addr in nif.inetAddresses) {
+                        if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                            val host = addr.hostAddress ?: continue
+                            val isWifiOrEth = nif.name.startsWith("wlan", ignoreCase = true) ||
+                                              nif.name.startsWith("eth", ignoreCase = true)
+                            if (isWifiOrEth) {
+                                return host
+                            }
+                            if (fallbackIp == null) {
+                                fallbackIp = host
+                            }
+                        }
+                    }
+                }
+                if (fallbackIp != null) {
+                    return fallbackIp
+                }
+            } catch (_: Exception) {}
+            return "0.0.0.0"
         }
     }
 }

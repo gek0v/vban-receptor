@@ -465,4 +465,11 @@ class VbanDiscoveryTest {
         val target = autoConnect.shouldAutoConnect(listOf(stream), isRunning = false)
         assertNotNull("Auto-connect should be re-enabled after explicit reset()", target)
     }
+
+    @Test
+    fun testLocalIpAddressResolves() {
+        val ip = VbanDiscoveryManager.getLocalIpAddress()
+        assertNotNull(ip)
+        assertTrue(ip.isNotEmpty())
+    }
 }

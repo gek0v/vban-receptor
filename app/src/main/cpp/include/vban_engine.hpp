@@ -107,6 +107,12 @@ public:
         return receiver_ ? receiver_->getUnrecoverableDrops() : 0;
     }
     [[nodiscard]] uint64_t getGlitchCount() const noexcept { return compensator_.getGlitchCount(); }
+    [[nodiscard]] std::string getDetectedStreamName() const {
+        if (receiver_) {
+            return receiver_->getDetectedStreamName();
+        }
+        return targetStreamName_;
+    }
 
     /**
      * Configures target audio latency / buffer watermark in milliseconds.
@@ -174,9 +180,9 @@ private:
     std::atomic<uint16_t> m_currentChannels{2};
     std::string listenIp_{"0.0.0.0"};
     uint16_t listenPort_{6980};
-    std::string targetStreamName_{"Stream1"};
+    std::string targetStreamName_{""};
 
-    VbanParser parser_{"Stream1"};
+    VbanParser parser_{""};
     SpscRingBuffer<float, VBAN_RING_BUFFER_CAPACITY> ringBuffer_;
     DriftCompensator compensator_;
     std::unique_ptr<OboePlayer> player_;

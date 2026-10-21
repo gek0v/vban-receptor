@@ -17,11 +17,11 @@ class LatencyProfileTest {
         val auto = LatencyProfile.AUTO
         assertEquals("AUTO", auto.id)
         assertEquals("Auto (Adaptativo)", auto.displayName)
-        assertEquals("5–25 ms · RFC 3550 Servo", auto.subtitle)
-        assertEquals(5.0f, auto.targetLatencyMsMin, 0.001f)
+        assertEquals("15–25 ms · RFC 3550 Servo", auto.subtitle)
+        assertEquals(15.0f, auto.targetLatencyMsMin, 0.001f)
         assertEquals(25.0f, auto.targetLatencyMsMax, 0.001f)
-        assertEquals(5.0f, auto.targetLatencyMs, 0.001f)
-        assertEquals("5–25 ms", auto.latencyRangeString)
+        assertEquals(15.0f, auto.targetLatencyMs, 0.001f)
+        assertEquals("15–25 ms", auto.latencyRangeString)
     }
 
     @Test

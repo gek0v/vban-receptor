@@ -7,6 +7,7 @@
 #include <array>
 #include <atomic>
 #include <thread>
+#include <mutex>
 #include <functional>
 #include <span>
 
@@ -24,7 +25,7 @@ namespace vban {
 struct ReceiverSocketConfig {
     std::string listenIp{"0.0.0.0"};
     uint16_t    port{6980};
-    std::string streamName{"Stream1"};
+    std::string streamName{""};
     size_t      socketBufferSize{4 * 1024 * 1024}; // 4 MB SO_RCVBUF
     uint32_t    receiveTimeoutMs{100};              // 100 ms SO_RCVTIMEO
 };
@@ -67,6 +68,7 @@ struct ReceiverTelemetry {
     uint32_t grantedBufferSize{0};
     bool     isMulticast{false};
     bool     isRunning{false};
+    char     activeStreamName[17]{0};
 };
 
 /**
@@ -152,6 +154,14 @@ public:
     [[nodiscard]] uint32_t getGrantedBufferSize() const noexcept { return m_grantedBufferSize; }
 
     /**
+     * Get detected active stream name (thread-safe).
+     */
+    [[nodiscard]] std::string getDetectedStreamName() const {
+        std::lock_guard<std::mutex> lock(m_streamNameMutex);
+        return m_detectedStreamName;
+    }
+
+    /**
      * Process an incoming raw datagram (used by receive loop and for host testing / loopback injection).
      */
     bool processDatagram(const uint8_t* buffer, size_t size, uint64_t arrivalTimeNs) noexcept;
@@ -216,6 +226,10 @@ private:
     uint32_t m_grantedBufferSize{0};
     bool     m_isMulticastJoined{false};
     alignas(4) uint8_t m_joinedMreq[8]{};
+
+    mutable std::mutex m_streamNameMutex;
+    std::string m_detectedStreamName;
+    std::string m_workerStreamName;
 
     // Format tracking for dynamic reconfiguration
     std::atomic<uint32_t> m_activeSampleRate{48000};
