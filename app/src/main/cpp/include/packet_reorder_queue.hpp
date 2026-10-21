@@ -109,24 +109,16 @@ public:
         // Modular sequence difference against highest sequence number seen
         const uint32_t jump = nuFrame - m_highestNuFrame;
         if (jump > 0 && jump < 0x80000000U) {
-            // Forward jump:
-            // jump == 1: consecutive packet (0 skipped)
-            // jump == 2: single-packet gap (1 skipped, e.g. 101 -> 103, skipping 102)
-            // jump > 2: gap > 1 packet -> flush queue and reset sequence tracking
-            if (jump > 2) {
-                flushAndResetAll(nuFrame);
-                const size_t slotIdx = nuFrame % SlotCount;
-                m_slots[slotIdx].nuFrame = nuFrame;
-                m_slots[slotIdx].sampleCount = static_cast<uint32_t>(sampleCount);
-                m_slots[slotIdx].valid = true;
-                std::memcpy(m_slots[slotIdx].samples.data(), samples, sampleCount * sizeof(SampleType));
-                return true;
-            }
             m_highestNuFrame = nuFrame;
         }
 
-        // Normal slot insertion
+        // Duplicate rejection for unpopped packets currently held in the queue
         const size_t slotIdx = nuFrame % SlotCount;
+        if (m_slots[slotIdx].valid && m_slots[slotIdx].nuFrame == nuFrame) {
+            return false;
+        }
+
+        // Normal slot insertion
         m_slots[slotIdx].nuFrame = nuFrame;
         m_slots[slotIdx].sampleCount = static_cast<uint32_t>(sampleCount);
         m_slots[slotIdx].valid = true;
@@ -335,13 +327,13 @@ private:
         for (size_t i = 0; i < SlotCount; ++i) {
             if (m_slots[i].valid) {
                 const uint32_t d = m_slots[i].nuFrame - newNuFrame;
-                if (d >= 0x80000000U || m_slots[i].nuFrame < newNuFrame) {
+                if (d >= 0x80000000U) {
                     m_slots[i].valid = false;
                 }
             }
         }
         m_expectedNuFrame = newNuFrame;
-        if (m_highestNuFrame - newNuFrame >= 0x80000000U || m_highestNuFrame < newNuFrame) {
+        if (m_highestNuFrame - newNuFrame >= 0x80000000U) {
             m_highestNuFrame = newNuFrame;
         }
         m_consecutivePlcCount = 0;

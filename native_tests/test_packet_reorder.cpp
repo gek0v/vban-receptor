@@ -159,6 +159,10 @@ TEST_CASE("PacketReorderQueue rejects late and duplicate packets") {
     float p1[4] = {1.f, 1.f, 1.f, 1.f};
 
     ASSERT_TRUE(queue.push(101, p1, 4));
+
+    // Duplicate while unpopped in queue -> rejected
+    ASSERT_FALSE(queue.push(101, p1, 4));
+
     float out[8] = {};
     bool plc = false;
     queue.popOrdered(out, 8, plc);
@@ -170,29 +174,59 @@ TEST_CASE("PacketReorderQueue rejects late and duplicate packets") {
     ASSERT_FALSE(queue.push(100, p1, 4));
 }
 
-TEST_CASE("PacketReorderQueue handles 32-bit sequence number wrap-around") {
-    vban::PacketReorderQueue<float, 16, 512> queue;
-    float pA[4] = {10.f, 10.f, 10.f, 10.f};
-    float pB[4] = {20.f, 20.f, 20.f, 20.f};
-    float pC[4] = {30.f, 30.f, 30.f, 30.f};
-    float pD[4] = {40.f, 40.f, 40.f, 40.f};
+TEST_CASE("PacketReorderQueue handles sequence jump >= 3 without premature flush (101, 104, 102, 103)") {
+    vban::PacketReorderQueue<float, 16, 256 * 2> queue;
+    float p1[4] = {1.f, 1.f, 1.f, 1.f};
+    float p2[4] = {2.f, 2.f, 2.f, 2.f};
+    float p3[4] = {3.f, 3.f, 3.f, 3.f};
+    float p4[4] = {4.f, 4.f, 4.f, 4.f};
 
-    // Push out of order across 0xFFFFFFFF wrap:
-    // Expected order: 0xFFFFFFFE, 0xFFFFFFFF, 0x00000000, 0x00000001
-    ASSERT_TRUE(queue.push(0xFFFFFFFEU, pA, 4));
-    ASSERT_TRUE(queue.push(0x00000000U, pC, 4));
-    ASSERT_TRUE(queue.push(0xFFFFFFFFU, pB, 4));
-    ASSERT_TRUE(queue.push(0x00000001U, pD, 4));
+    // Push 101, then jump to 104 (jump = 3), then out-of-order 102 and 103
+    ASSERT_TRUE(queue.push(101, p1, 4));
+    ASSERT_TRUE(queue.push(104, p4, 4));
+    ASSERT_TRUE(queue.push(102, p2, 4));
+    ASSERT_TRUE(queue.push(103, p3, 4));
 
     float out[16] = {};
     bool plc = false;
     size_t popped = queue.popOrdered(out, 16, plc);
     ASSERT_EQ(popped, 16U);
     ASSERT_FALSE(plc);
+    ASSERT_EQ(out[0], 1.f);
+    ASSERT_EQ(out[4], 2.f);
+    ASSERT_EQ(out[8], 3.f);
+    ASSERT_EQ(out[12], 4.f);
+}
+
+TEST_CASE("PacketReorderQueue modular wrap-around across 0xFFFFFFFF with sequence jump >= 3") {
+    vban::PacketReorderQueue<float, 16, 512> queue;
+    float pA[4] = {10.f, 10.f, 10.f, 10.f};
+    float pB[4] = {20.f, 20.f, 20.f, 20.f};
+    float pC[4] = {30.f, 30.f, 30.f, 30.f};
+    float pD[4] = {40.f, 40.f, 40.f, 40.f};
+    float pE[4] = {50.f, 50.f, 50.f, 50.f};
+
+    // Expected order: 0xFFFFFFFD, 0xFFFFFFFE, 0xFFFFFFFF, 0x00000000, 0x00000001
+    // Push with jump = 4 across 0xFFFFFFFF boundary
+    ASSERT_TRUE(queue.push(0xFFFFFFFDU, pA, 4));
+    ASSERT_TRUE(queue.push(0x00000001U, pE, 4)); // Jump of 4 across wrap
+    ASSERT_TRUE(queue.push(0xFFFFFFFFU, pC, 4));
+    ASSERT_TRUE(queue.push(0xFFFFFFFEU, pB, 4));
+    ASSERT_TRUE(queue.push(0x00000000U, pD, 4));
+
+    // Duplicate rejection for unpopped packet in circular slot across wrap
+    ASSERT_FALSE(queue.push(0x00000000U, pD, 4));
+
+    float out[20] = {};
+    bool plc = false;
+    size_t popped = queue.popOrdered(out, 20, plc);
+    ASSERT_EQ(popped, 20U);
+    ASSERT_FALSE(plc);
     ASSERT_EQ(out[0], 10.f);
     ASSERT_EQ(out[4], 20.f);
     ASSERT_EQ(out[8], 30.f);
     ASSERT_EQ(out[12], 40.f);
+    ASSERT_EQ(out[16], 50.f);
 }
 
 TEST_CASE("VbanReceiver reorders out-of-order UDP datagrams before SPSC push") {
