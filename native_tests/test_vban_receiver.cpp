@@ -156,6 +156,25 @@ TEST_CASE("receiver_socket_create_bind_and_buffer_config") {
     close_sock(sock);
 }
 
+TEST_CASE("receiver_bind_fallback_to_inaddr_any_on_remote_transmitter_ip") {
+    WsaGuard wsa;
+    vban::SpscRingBuffer<float, vban::VBAN_RING_BUFFER_CAPACITY> ringBuffer;
+    vban::VbanReceiver receiver(ringBuffer);
+
+    vban::ReceiverSocketConfig cfg;
+    // 192.0.2.1 is TEST-NET-1 (RFC 5737), not assigned to any local interface
+    cfg.listenIp = "192.0.2.1";
+    cfg.port = 18985;
+    cfg.streamName = "FallbackTest";
+    cfg.socketBufferSize = 65536;
+
+    // Should gracefully fall back to INADDR_ANY and bind successfully
+    ASSERT_TRUE(receiver.start(cfg));
+    EXPECT_TRUE(receiver.isRunning());
+    receiver.stop();
+    EXPECT_FALSE(receiver.isRunning());
+}
+
 // ==============================================================================
 // 2. Multicast Address Validation Tests
 // ==============================================================================

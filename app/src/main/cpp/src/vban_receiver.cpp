@@ -224,10 +224,17 @@ bool VbanReceiver::openSocket(const ReceiverSocketConfig& config) {
     }
 
     if (::bind(sock, reinterpret_cast<sockaddr*>(&bindAddr), sizeof(bindAddr)) != 0) {
-        LOGE("Failed to bind UDP socket to %s:%u (error %d)",
+        // If binding to specific IP failed (e.g. EADDRNOTAVAIL because config.listenIp is a
+        // remote transmitter/sender IP), fallback to INADDR_ANY so unicast reception continues.
+        LOGW("Failed to bind UDP socket to %s:%u (error %d), falling back to INADDR_ANY",
              config.listenIp.c_str(), config.port, GET_SOCKET_ERR());
-        CLOSESOCKET(sock);
-        return false;
+        bindAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+        if (::bind(sock, reinterpret_cast<sockaddr*>(&bindAddr), sizeof(bindAddr)) != 0) {
+            LOGE("Failed to bind UDP socket to INADDR_ANY:%u (error %d)",
+                 config.port, GET_SOCKET_ERR());
+            CLOSESOCKET(sock);
+            return false;
+        }
     }
 
     // 7. Join multicast group if applicable

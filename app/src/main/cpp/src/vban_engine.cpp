@@ -105,6 +105,8 @@ bool VbanEngine::start(const std::string& listenIp, uint16_t port, const std::st
 
     if (!receiver_->start(netConfig)) {
         LOGE("Failed to start VbanReceiver on %s:%u", listenIp_.c_str(), listenPort_);
+        stop();
+        return false;
     }
 
     running_.store(true, std::memory_order_release);

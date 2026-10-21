@@ -56,4 +56,18 @@ class DashboardScreenLogicTest {
         // should still be blocked because userRequestedStop is latched
         assertNull(manager.shouldAutoConnect(listOf(stream), isRunning = false))
     }
+
+    @Test
+    fun testActiveStreamDisplayIpResolution() {
+        fun resolveDisplayIp(transmitterIp: String, listenIp: String): String {
+            return if (transmitterIp.isNotBlank()) transmitterIp else listenIp
+        }
+
+        // Auto-connected from transmitter
+        assertEquals("192.168.1.50", resolveDisplayIp(transmitterIp = "192.168.1.50", listenIp = "0.0.0.0"))
+        // Manual unicast config
+        assertEquals("0.0.0.0", resolveDisplayIp(transmitterIp = "", listenIp = "0.0.0.0"))
+        // Multicast group
+        assertEquals("239.255.0.1", resolveDisplayIp(transmitterIp = "", listenIp = "239.255.0.1"))
+    }
 }

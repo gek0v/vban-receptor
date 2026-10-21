@@ -114,6 +114,7 @@ fun DashboardScreen(
     val isScanning by discoveryManager.isScanning.collectAsState()
 
     var listenIp by remember { mutableStateOf("0.0.0.0") }
+    var transmitterIp by remember { mutableStateOf("") }
     var portText by remember { mutableStateOf("6980") }
     var streamName by remember { mutableStateOf("Stream1") }
     var selectedDeviceId by remember { mutableIntStateOf(0) }
@@ -142,10 +143,10 @@ fun DashboardScreen(
         if (stream != null) {
             autoConnectManager.markAutoConnected()
             discoveryManager.pauseDiscoverySocket()
-            listenIp = stream.sourceIp
+            transmitterIp = stream.sourceIp
             portText = stream.port.toString()
             streamName = stream.streamName
-            onStartService(stream.sourceIp, stream.port, stream.streamName, selectedDeviceId)
+            onStartService("0.0.0.0", stream.port, stream.streamName, selectedDeviceId)
         }
     }
 
@@ -196,7 +197,7 @@ fun DashboardScreen(
             // 4. Compact Active Stream Card
             ActiveStreamCard(
                 streamName = streamName,
-                listenIp = listenIp,
+                listenIp = if (transmitterIp.isNotBlank()) transmitterIp else listenIp,
                 port = portText,
                 telemetry = telemetry,
                 deviceName = selectedDeviceName,
@@ -211,17 +212,20 @@ fun DashboardScreen(
                     onStreamConnect = { stream ->
                         autoConnectManager.markAutoConnected()
                         discoveryManager.pauseDiscoverySocket()
-                        listenIp = stream.sourceIp
+                        transmitterIp = stream.sourceIp
                         portText = stream.port.toString()
                         streamName = stream.streamName
-                        onStartService(stream.sourceIp, stream.port, stream.streamName, selectedDeviceId)
+                        onStartService("0.0.0.0", stream.port, stream.streamName, selectedDeviceId)
                     }
                 )
 
                 // 6. Manual Connection Panel (collapsible fallback)
                 ManualConnectionCard(
                     listenIp = listenIp,
-                    onIpChange = { listenIp = it },
+                    onIpChange = {
+                        listenIp = it
+                        transmitterIp = ""
+                    },
                     portText = portText,
                     onPortChange = { portText = it },
                     streamName = streamName,
@@ -275,7 +279,8 @@ fun DashboardScreen(
                     } else {
                         discoveryManager.pauseDiscoverySocket()
                         val port = portText.toIntOrNull() ?: 6980
-                        onStartService(listenIp, port, streamName, selectedDeviceId)
+                        val ip = if (listenIp.isBlank()) "0.0.0.0" else listenIp.trim()
+                        onStartService(ip, port, streamName, selectedDeviceId)
                     }
                 },
                 modifier = Modifier
