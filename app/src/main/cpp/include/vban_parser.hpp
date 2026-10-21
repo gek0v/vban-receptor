@@ -6,7 +6,6 @@
 #include <string_view>
 #include <atomic>
 #include <chrono>
-#include <ostream>
 
 namespace vban {
 
@@ -143,9 +142,5 @@ private:
     uint64_t lastArrivalNs_{0};
     std::atomic<double>   jitterSeconds_{0.0};
 };
-
-inline std::ostream& operator<<(std::ostream& os, ParseResult res) {
-    return os << VbanParser::resultToString(res);
-}
 
 } // namespace vban

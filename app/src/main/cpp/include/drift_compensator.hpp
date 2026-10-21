@@ -8,16 +8,11 @@
 #include <array>
 #include <cstring>
 #include <concepts>
-#include <ostream>
 
+#include "vban_protocol.hpp"
 #include "spsc_ring_buffer.hpp"
 
 namespace vban {
-
-#ifndef VBAN_RING_BUFFER_CAPACITY_DEFINED
-#define VBAN_RING_BUFFER_CAPACITY_DEFINED
-inline constexpr size_t VBAN_RING_BUFFER_CAPACITY = 262144;
-#endif
 
 /**
  * @brief Configuration parameters for dynamic clock drift compensation.
@@ -330,64 +325,6 @@ public:
         return outFrame;
     }
 
-    size_t processDirect(
-        const float* input,
-        size_t inputFrames,
-        size_t& inputFramesConsumed,
-        float* output,
-        size_t outputFrames,
-        size_t channels,
-        double ratio
-    ) noexcept {
-        if (!input || !output || inputFrames < 4 || outputFrames == 0 || channels == 0 || channels > MAX_CHANNELS) {
-            return 0;
-        }
-
-        const double clampedRatio = std::clamp(ratio, 0.5, 2.0);
-
-        if (!m_isPrimed) {
-            for (size_t i = 0; i < 4; ++i) {
-                for (size_t ch = 0; ch < channels; ++ch) {
-                    m_history[i][ch] = input[i * channels + ch];
-                }
-            }
-            m_phase = 0.0;
-            m_isPrimed = true;
-            inputFramesConsumed = 4;
-        } else {
-            inputFramesConsumed = 0;
-        }
-
-        size_t inIdx = inputFramesConsumed;
-        size_t outFrame = 0;
-
-        while (outFrame < outputFrames && inIdx < inputFrames) {
-            const float t = static_cast<float>(m_phase);
-            for (size_t ch = 0; ch < channels; ++ch) {
-                output[outFrame * channels + ch] = interpolateScalar(
-                    m_history[0][ch], m_history[1][ch],
-                    m_history[2][ch], m_history[3][ch], t
-                );
-            }
-            outFrame++;
-            m_phase += clampedRatio;
-
-            while (m_phase >= 1.0) {
-                m_phase -= 1.0;
-                if (inIdx < inputFrames) {
-                    shiftHistory(&input[inIdx * channels], channels);
-                    inIdx++;
-                } else {
-                    inputFramesConsumed = inIdx;
-                    return outFrame;
-                }
-            }
-        }
-
-        inputFramesConsumed = inIdx;
-        return outFrame;
-    }
-
     [[nodiscard]] double getPhase() const noexcept { return m_phase; }
     [[nodiscard]] bool isPrimed() const noexcept { return m_isPrimed; }
     [[nodiscard]] uint64_t getTotalOutputFrames() const noexcept { return m_totalOutputFramesGenerated; }
@@ -482,16 +419,6 @@ enum class FadeState : uint8_t {
     Active,       ///< Signal gain is 1.0 (full audio pass-through)
     FadingOut     ///< Ramping gain from 1.0 to 0.0 (128 samples)
 };
-
-inline std::ostream& operator<<(std::ostream& os, FadeState state) {
-    switch (state) {
-        case FadeState::Muted: return os << "Muted";
-        case FadeState::FadingIn: return os << "FadingIn";
-        case FadeState::Active: return os << "Active";
-        case FadeState::FadingOut: return os << "FadingOut";
-    }
-    return os << "Unknown";
-}
 
 /**
  * @brief 128-Sample Raised Cosine Stream Transition & Fade Engine.

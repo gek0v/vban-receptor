@@ -18,41 +18,6 @@ namespace {
 jclass    g_telemetryClass = nullptr;
 jmethodID g_telemetryCtor  = nullptr;
 
-/**
- * RAII helper for jstring conversion to ensure ReleaseStringUTFChars is always invoked.
- */
-class JniUtfString {
-public:
-    JniUtfString(JNIEnv* env, jstring javaStr)
-        : m_env(env), m_javaStr(javaStr), m_chars(nullptr) {
-        if (m_env && m_javaStr) {
-            m_chars = m_env->GetStringUTFChars(m_javaStr, nullptr);
-        }
-    }
-
-    ~JniUtfString() {
-        if (m_env && m_javaStr && m_chars) {
-            m_env->ReleaseStringUTFChars(m_javaStr, m_chars);
-        }
-    }
-
-    [[nodiscard]] const char* c_str() const noexcept {
-        return m_chars ? m_chars : "";
-    }
-
-    [[nodiscard]] std::string toString() const {
-        return m_chars ? std::string(m_chars) : std::string();
-    }
-
-    JniUtfString(const JniUtfString&) = delete;
-    JniUtfString& operator=(const JniUtfString&) = delete;
-
-private:
-    JNIEnv*     m_env;
-    jstring     m_javaStr;
-    const char* m_chars;
-};
-
 } // anonymous namespace
 
 // ==============================================================================
@@ -140,15 +105,13 @@ Java_com_vban_receptor_native_NativeVbanEngine_startReceiver(
         return JNI_FALSE;
     }
 
-    JniUtfString ipStr(env, listenIp);
-    JniUtfString nameStr(env, streamName);
+    const char* ipChars = listenIp ? env->GetStringUTFChars(listenIp, nullptr) : nullptr;
+    const char* nameChars = streamName ? env->GetStringUTFChars(streamName, nullptr) : nullptr;
+    std::string ip = ipChars ? ipChars : "0.0.0.0";
+    std::string name = nameChars ? nameChars : "";
+    if (ipChars) env->ReleaseStringUTFChars(listenIp, ipChars);
+    if (nameChars) env->ReleaseStringUTFChars(streamName, nameChars);
 
-    std::string ip = ipStr.toString();
-    if (ip.empty()) {
-        ip = "0.0.0.0";
-    }
-
-    std::string name = nameStr.toString();
     uint16_t uPort = (port > 0 && port <= 65535) ? static_cast<uint16_t>(port) : 6980;
 
     LOGI("startReceiver: IP=%s, Port=%u, Stream='%s', DeviceId=%d",
@@ -184,34 +147,15 @@ Java_com_vban_receptor_native_NativeVbanEngine_setAudioDevice(
 JNIEXPORT jobject JNICALL
 Java_com_vban_receptor_native_NativeVbanEngine_getTelemetry(
     JNIEnv* env, jobject /*thiz*/) {
-    if (!env) {
+    if (!env || !g_telemetryClass || !g_telemetryCtor) {
         return nullptr;
     }
 
-    // Retrieve lock-free atomic snapshot from native coordinator
     const auto telemetry = vban::VbanEngine::getInstance().getTelemetry();
 
-    jclass cls = g_telemetryClass;
-    jmethodID ctor = g_telemetryCtor;
-
-    // Fallback lazy resolution if JNI_OnLoad was bypassed
-    if (!cls || !ctor) {
-        jclass localCls = env->FindClass("com/vban/receptor/native/NativeTelemetry");
-        if (!localCls) {
-            LOGW("getTelemetry: Unable to resolve NativeTelemetry class");
-            return nullptr;
-        }
-        cls = localCls;
-        ctor = env->GetMethodID(cls, "<init>", "(IIIJJFFFF)V");
-        if (!ctor) {
-            LOGW("getTelemetry: Unable to resolve NativeTelemetry constructor");
-            return nullptr;
-        }
-    }
-
     return env->NewObject(
-        cls,
-        ctor,
+        g_telemetryClass,
+        g_telemetryCtor,
         static_cast<jint>(telemetry.sampleRate),
         static_cast<jint>(telemetry.channelCount),
         static_cast<jint>(telemetry.bitDepth),

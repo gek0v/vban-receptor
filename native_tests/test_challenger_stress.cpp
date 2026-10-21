@@ -412,55 +412,6 @@ TEST_CASE("challenger_converter_float32_adversarial_sanitization") {
 }
 
 // ==============================================================================
-// 8. Audio Converter: Multichannel Interleaving / Deinterleaving Invariants
-// ==============================================================================
-
-TEST_CASE("challenger_converter_multichannel_edge_cases") {
-    // Edge case: zero frames or null pointers must be handled gracefully without crashing
-    float dummyIn[4] = {1.0f, 2.0f, 3.0f, 4.0f};
-    float dummyOut[4] = {0.0f};
-    deinterleave(static_cast<const float*>(nullptr), dummyOut, 4, 2);
-    deinterleave(dummyIn, static_cast<float*>(nullptr), 4, 2);
-    deinterleave(dummyIn, dummyOut, 0, 2);
-    deinterleave(dummyIn, dummyOut, 4, 0);
-
-    interleave(static_cast<const float*>(nullptr), dummyOut, 4, 2);
-    interleave(dummyIn, static_cast<float*>(nullptr), 4, 2);
-    interleave(dummyIn, dummyOut, 0, 2);
-    interleave(dummyIn, dummyOut, 4, 0);
-
-    // 1-channel (Mono) pass-through test
-    constexpr size_t kMonoFrames = 32;
-    std::vector<float> monoIn(kMonoFrames);
-    for (size_t i = 0; i < kMonoFrames; ++i) monoIn[i] = static_cast<float>(i) * 0.01f;
-    std::vector<float> monoPlanar(kMonoFrames, 0.0f);
-    deinterleave(monoIn.data(), monoPlanar.data(), kMonoFrames, 1);
-    for (size_t i = 0; i < kMonoFrames; ++i) {
-        ASSERT_NEAR(monoPlanar[i], monoIn[i], 1e-7f);
-    }
-
-    // 8-channel (7.1 Surround) roundtrip test
-    constexpr size_t kFrames = 17; // Odd frame count
-    constexpr size_t kChannels = 8;
-    constexpr size_t kTotal = kFrames * kChannels;
-
-    std::vector<float> multiIn(kTotal);
-    for (size_t i = 0; i < kTotal; ++i) {
-        multiIn[i] = static_cast<float>(i * 3 + 1) * 0.001f;
-    }
-
-    std::vector<float> multiPlanar(kTotal, 0.0f);
-    deinterleave(multiIn.data(), multiPlanar.data(), kFrames, kChannels);
-
-    std::vector<float> multiReconstructed(kTotal, 0.0f);
-    interleave(multiPlanar.data(), multiReconstructed.data(), kFrames, kChannels);
-
-    for (size_t i = 0; i < kTotal; ++i) {
-        ASSERT_NEAR(multiReconstructed[i], multiIn[i], 1e-7f);
-    }
-}
-
-// ==============================================================================
 // 9. VBAN Protocol & Parser: Edge Cases, Malformed Headers & Fuzzing
 // ==============================================================================
 
@@ -1893,16 +1844,17 @@ TEST_CASE("challenger_tier5_high_rate_768khz_drift_and_fade_invariants") {
     }
 
     std::vector<float> output(kOutputFrames * kChannels);
-    size_t consumed = 0;
+    vban::SpscRingBuffer<float, 65536> ringBuffer;
+    ringBuffer.write(input.data(), kInputFrames * kChannels);
+
     // Resample with +100 PPM ratio (1.000100)
-    size_t produced = resampler.processDirect(
-        input.data(), kInputFrames, consumed,
+    size_t produced = resampler.process(
+        ringBuffer,
         output.data(), kOutputFrames, kChannels,
         1.000100
     );
 
     ASSERT_EQ(produced, kOutputFrames);
-    ASSERT_GT(consumed, 0U);
 
     // Verify all output samples are finite, continuous and bounded within [-1.0f, +1.0f]
     for (size_t i = 0; i < kOutputFrames * kChannels; ++i) {

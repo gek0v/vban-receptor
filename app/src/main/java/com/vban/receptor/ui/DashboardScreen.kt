@@ -46,12 +46,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import com.vban.receptor.audio.AudioDevice
 import com.vban.receptor.audio.LatencyProfile
 import com.vban.receptor.native.NativeTelemetry
 import com.vban.receptor.native.NativeVbanEngine
 import com.vban.receptor.network.DiscoveredStream
 import com.vban.receptor.network.VbanDiscoveryManager
-import com.vban.receptor.ui.components.AudioOutputDeviceItem
 import com.vban.receptor.ui.components.BufferOccupancyGauge
 import com.vban.receptor.ui.components.DeviceSelector
 import com.vban.receptor.ui.components.DiscoveredStreamsSheet
@@ -68,7 +68,7 @@ import java.util.Locale
 fun DashboardScreen(
     onStartService: (ip: String, port: Int, stream: String, deviceId: Int) -> Unit,
     onStopService: () -> Unit,
-    availableDevices: List<AudioOutputDeviceItem> = emptyList(),
+    availableDevices: List<AudioDevice> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val isRunning by NativeVbanEngine.isRunning.collectAsState()

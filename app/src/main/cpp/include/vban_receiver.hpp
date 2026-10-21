@@ -17,11 +17,6 @@
 
 namespace vban {
 
-#ifndef VBAN_RING_BUFFER_CAPACITY_DEFINED
-#define VBAN_RING_BUFFER_CAPACITY_DEFINED
-inline constexpr size_t VBAN_RING_BUFFER_CAPACITY = 262144;
-#endif
-
 /**
  * Socket configuration options for VbanReceiver.
  */

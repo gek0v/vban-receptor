@@ -326,10 +326,12 @@ TEST_CASE("drift_resampler_multichannel_phase_coherence") {
         }
     }
 
-    size_t consumed = 0;
+    vban::SpscRingBuffer<float, 1024> ringBuffer;
+    ringBuffer.write(input.data(), 16 * kChannels);
+
     std::vector<float> output(10 * kChannels, 0.0f);
-    size_t produced = resampler.processDirect(
-        input.data(), 16, consumed, output.data(), 10, kChannels, 1.00005
+    size_t produced = resampler.process(
+        ringBuffer, output.data(), 10, kChannels, 1.00005
     );
 
     ASSERT_EQ(produced, 10U);

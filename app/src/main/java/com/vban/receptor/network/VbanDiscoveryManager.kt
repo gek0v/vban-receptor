@@ -310,23 +310,6 @@ class VbanDiscoveryManager(
         )
 
         /**
-         * Shared singleton instance for app-wide discovery.
-         */
-        val instance: VbanDiscoveryManager by lazy { VbanDiscoveryManager() }
-
-        val discoveredStreams: StateFlow<List<DiscoveredStream>>
-            get() = instance.discoveredStreams
-
-        val isScanning: StateFlow<Boolean>
-            get() = instance.isScanning
-
-        fun start(port: Int = DEFAULT_PORT) = instance.start(port)
-
-        fun stop() = instance.stop()
-
-        fun clear() = instance.clear()
-
-        /**
          * Parses a 28-byte VBAN header from raw UDP packet data.
          *
          * @param packetData Raw bytes received from the network.

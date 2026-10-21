@@ -23,15 +23,6 @@
 
 namespace vban {
 
-#ifndef VBAN_RING_BUFFER_CAPACITY_DEFINED
-#define VBAN_RING_BUFFER_CAPACITY_DEFINED
-/**
- * Capacity of the central audio SPSC ring buffer:
- * 2^18 = 262,144 frames (341.3 ms at 768 kHz, ~2 MB RAM).
- */
-inline constexpr size_t VBAN_RING_BUFFER_CAPACITY = 262144;
-#endif
-
 /**
  * Audio stream configuration matching PROJECT.md interface contract.
  */
@@ -40,12 +31,6 @@ struct AudioStreamConfig {
     uint16_t channelCount{2};
     int32_t  targetDeviceId{0};
 };
-
-/**
- * C++20 Concept verification for audio sample types.
- */
-template <typename T>
-concept AudioSampleType = std::floating_point<T> || std::integral<T>;
 
 /**
  * VbanEngine
@@ -65,13 +50,6 @@ public:
     VbanEngine& operator=(const VbanEngine&) = delete;
     VbanEngine(VbanEngine&&) = delete;
     VbanEngine& operator=(VbanEngine&&) = delete;
-
-    /**
-     * Verifies C++20 features (concepts, std::endian, std::span) and
-     * Oboe library headers / symbols at startup.
-     * @return true if C++20 and Oboe environment are valid.
-     */
-    static bool verifyCpp20AndOboeEnvironment();
 
     /**
      * Initialize the native engine.

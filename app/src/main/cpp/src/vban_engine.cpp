@@ -26,62 +26,10 @@ VbanEngine::~VbanEngine() {
     stop();
 }
 
-bool VbanEngine::verifyCpp20AndOboeEnvironment() {
-    LOGI("=== Initializing VBAN Engine C++20 & Oboe Verification ===");
-
-    // 1. Verify C++20 compiler version
-    #if defined(__cplusplus)
-        LOGI("Detected __cplusplus: %ld", __cplusplus);
-        #if __cplusplus < 202002L
-        LOGW("Warning: __cplusplus is %ld, expected >= 202002L for C++20", __cplusplus);
-        #endif
-    #endif
-
-    // 2. Verify C++20 <bit> endianness
-    constexpr bool isLittle = (std::endian::native == std::endian::little);
-    LOGI("C++20 std::endian check: %s", isLittle ? "Little-Endian (ARM/x86 native)" : "Big-Endian");
-
-    // 3. Verify C++20 std::span
-    constexpr float testArray[] = {0.0f, 0.25f, 0.5f, 1.0f};
-    std::span<const float> testSpan{testArray};
-    if (testSpan.size() != 4 || testSpan[3] != 1.0f) {
-        LOGE("C++20 std::span validation failed!");
-        return false;
-    }
-    LOGI("C++20 std::span validated successfully (size=%zu)", testSpan.size());
-
-    // 4. Verify C++20 Concept usage
-    static_assert(AudioSampleType<float>, "float must satisfy AudioSampleType");
-    static_assert(AudioSampleType<int16_t>, "int16_t must satisfy AudioSampleType");
-    static_assert(AudioSampleType<int32_t>, "int32_t must satisfy AudioSampleType");
-    LOGI("C++20 concepts validated successfully");
-
-    // 5. Verify Oboe Prefab linkage and AudioStreamBuilder instantiation
-    oboe::AudioStreamBuilder builder;
-    builder.setDirection(oboe::Direction::Output);
-    builder.setPerformanceMode(oboe::PerformanceMode::LowLatency);
-    builder.setSharingMode(oboe::SharingMode::Exclusive);
-    builder.setFormat(oboe::AudioFormat::Float);
-    builder.setChannelCount(oboe::ChannelCount::Stereo);
-    builder.setSampleRate(48000);
-
-    const char* oboeVersion = oboe::getVersionText();
-    LOGI("Oboe AudioStreamBuilder instantiated. Oboe library version: %s",
-         oboeVersion ? oboeVersion : "unknown");
-
-    LOGI("=== C++20 & Oboe Verification PASSED ===");
-    return true;
-}
-
 bool VbanEngine::initialize() {
     if (initialized_.load(std::memory_order_acquire)) {
         LOGI("VbanEngine already initialized");
         return true;
-    }
-
-    if (!verifyCpp20AndOboeEnvironment()) {
-        LOGE("VbanEngine environment verification failed!");
-        return false;
     }
 
     parser_.reset();

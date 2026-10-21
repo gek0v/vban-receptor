@@ -177,7 +177,7 @@ fun LatencyProfileSelector(
                 }
 
                 Text(
-                    text = "Target Fill: ${selectedProfile.targetOccupancyPercent.toInt()}% (~${selectedProfile.targetSamplesAt48k} smp) · EMA τ: ${selectedProfile.emaTauSeconds.toInt()}s · Kp: ${selectedProfile.kp}",
+                    text = "Target Latency: ${selectedProfile.latencyRangeString} (${selectedProfile.targetLatencyMs.toInt()} ms nominal)",
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp
