@@ -347,9 +347,10 @@ TEST_CASE("receiver_dynamic_stream_reconfiguration_trigger") {
 TEST_CASE("jni_telemetry_struct_packing_and_alignment") {
     // Verify strict field sizes and offsets matching the JNI constructor:
     // (sampleRate: I, channelCount: I, bitDepth: I, totalPackets: J, lostPackets: J,
-    //  jitterMs: F, bufferOccupancy: F, peakL: F, peakR: F) -> V
+    //  jitterMs: F, bufferOccupancy: F, peakL: F, peakR: F, targetWatermarkMs: F,
+    //  unrecoverableDrops: J, glitchCount: J) -> V
 
-    ASSERT_EQ(sizeof(vban::NativeTelemetry), 40U);
+    ASSERT_EQ(sizeof(vban::NativeTelemetry), 64U);
     ASSERT_EQ(offsetof(vban::NativeTelemetry, sampleRate), 0U);
     ASSERT_EQ(offsetof(vban::NativeTelemetry, channelCount), 4U);
     ASSERT_EQ(offsetof(vban::NativeTelemetry, bitDepth), 6U);
@@ -359,6 +360,9 @@ TEST_CASE("jni_telemetry_struct_packing_and_alignment") {
     ASSERT_EQ(offsetof(vban::NativeTelemetry, bufferOccupancyPercent), 28U);
     ASSERT_EQ(offsetof(vban::NativeTelemetry, peakLevelLeft), 32U);
     ASSERT_EQ(offsetof(vban::NativeTelemetry, peakLevelRight), 36U);
+    ASSERT_EQ(offsetof(vban::NativeTelemetry, targetWatermarkMs), 40U);
+    ASSERT_EQ(offsetof(vban::NativeTelemetry, unrecoverableDrops), 48U);
+    ASSERT_EQ(offsetof(vban::NativeTelemetry, glitchCount), 56U);
 }
 
 TEST_CASE("jni_telemetry_concurrent_snapshot_integrity") {

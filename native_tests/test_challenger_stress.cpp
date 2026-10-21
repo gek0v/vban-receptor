@@ -1457,7 +1457,7 @@ TEST_CASE("challenger_m4_dynamic_reconfiguration_multi_format_stress") {
 // ==============================================================================
 TEST_CASE("challenger_m4_jni_struct_packing_and_binary_layout") {
     // 1. Strict size assertion
-    ASSERT_EQ(sizeof(vban::NativeTelemetry), 40U);
+    ASSERT_EQ(sizeof(vban::NativeTelemetry), 64U);
 
     // 2. Strict offset assertions
     ASSERT_EQ(offsetof(vban::NativeTelemetry, sampleRate), 0U);
@@ -1469,6 +1469,9 @@ TEST_CASE("challenger_m4_jni_struct_packing_and_binary_layout") {
     ASSERT_EQ(offsetof(vban::NativeTelemetry, bufferOccupancyPercent), 28U);
     ASSERT_EQ(offsetof(vban::NativeTelemetry, peakLevelLeft), 32U);
     ASSERT_EQ(offsetof(vban::NativeTelemetry, peakLevelRight), 36U);
+    ASSERT_EQ(offsetof(vban::NativeTelemetry, targetWatermarkMs), 40U);
+    ASSERT_EQ(offsetof(vban::NativeTelemetry, unrecoverableDrops), 48U);
+    ASSERT_EQ(offsetof(vban::NativeTelemetry, glitchCount), 56U);
 
     // 3. Raw byte serialization roundtrip
     vban::NativeTelemetry tOriginal;
@@ -1481,8 +1484,11 @@ TEST_CASE("challenger_m4_jni_struct_packing_and_binary_layout") {
     tOriginal.bufferOccupancyPercent = 50.0f;
     tOriginal.peakLevelLeft = 0.85f;
     tOriginal.peakLevelRight = 0.90f;
+    tOriginal.targetWatermarkMs = 8.5f;
+    tOriginal.unrecoverableDrops = 3ULL;
+    tOriginal.glitchCount = 1ULL;
 
-    alignas(8) uint8_t rawBytes[40];
+    alignas(8) uint8_t rawBytes[64];
     std::memcpy(rawBytes, &tOriginal, sizeof(tOriginal));
 
     // Inspect individual binary values from raw buffer
@@ -1495,6 +1501,9 @@ TEST_CASE("challenger_m4_jni_struct_packing_and_binary_layout") {
     float occ = *reinterpret_cast<const float*>(rawBytes + 28);
     float pkL = *reinterpret_cast<const float*>(rawBytes + 32);
     float pkR = *reinterpret_cast<const float*>(rawBytes + 36);
+    float twm = *reinterpret_cast<const float*>(rawBytes + 40);
+    uint64_t drp = *reinterpret_cast<const uint64_t*>(rawBytes + 48);
+    uint64_t glt = *reinterpret_cast<const uint64_t*>(rawBytes + 56);
 
     EXPECT_EQ(sr, 768000U);
     EXPECT_EQ(ch, 2U);
@@ -1505,6 +1514,9 @@ TEST_CASE("challenger_m4_jni_struct_packing_and_binary_layout") {
     EXPECT_EQ(occ, 50.0f);
     EXPECT_EQ(pkL, 0.85f);
     EXPECT_EQ(pkR, 0.90f);
+    EXPECT_EQ(twm, 8.5f);
+    EXPECT_EQ(drp, 3ULL);
+    EXPECT_EQ(glt, 1ULL);
 }
 
 // ==============================================================================

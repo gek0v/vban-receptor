@@ -1,9 +1,20 @@
 package com.vban.receptor.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,23 +24,35 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SettingsEthernet
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -38,32 +61,41 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material.icons.filled.Sensors
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import com.vban.receptor.audio.AudioDevice
-import com.vban.receptor.audio.LatencyProfile
 import com.vban.receptor.native.NativeTelemetry
 import com.vban.receptor.native.NativeVbanEngine
+import com.vban.receptor.network.AutoConnectManager
 import com.vban.receptor.network.DiscoveredStream
 import com.vban.receptor.network.VbanDiscoveryManager
-import com.vban.receptor.ui.components.BufferOccupancyGauge
+import com.vban.receptor.ui.components.CollapsibleDrawer
 import com.vban.receptor.ui.components.DeviceSelector
-import com.vban.receptor.ui.components.DiscoveredStreamsSheet
+import com.vban.receptor.ui.components.LatencyHeroDial
 import com.vban.receptor.ui.components.LatencyProfileSelector
+import com.vban.receptor.ui.components.MinimalStereoMeter
 import com.vban.receptor.ui.components.SpectrumAnalyzer
-import com.vban.receptor.ui.components.StereoVuMeter
-import java.util.Locale
+import com.vban.receptor.ui.theme.DarkBorder
+import com.vban.receptor.ui.theme.DarkSurface
+import com.vban.receptor.ui.theme.DarkSurfaceVariant
+import com.vban.receptor.ui.theme.HeroLabel
+import com.vban.receptor.ui.theme.LiveGreen
+import com.vban.receptor.ui.theme.OledBlack
+import com.vban.receptor.ui.theme.StopRed
+import com.vban.receptor.ui.theme.TextMuted
+import com.vban.receptor.ui.theme.TextPrimary
+import com.vban.receptor.ui.theme.TextSecondary
 
 /**
- * Main Audiophile Dashboard Screen for VBAN Receptor.
+ * Main Bauhaus Minimalist Audiophile Dashboard for VBAN Receptor.
+ *
+ * Implements high-contrast pure OLED black aesthetic (#000000), stark typography,
+ * real-time latency hero dial, ballistic dual micro-bars stereo meter, compact stream card,
+ * zero-config one-shot auto-connect, and a collapsible advanced tools drawer.
  */
-@androidx.compose.material3.ExperimentalMaterial3Api
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     onStartService: (ip: String, port: Int, stream: String, deviceId: Int) -> Unit,
@@ -77,12 +109,25 @@ fun DashboardScreen(
     val spectrumBands by NativeVbanEngine.spectrumBands.collectAsState()
 
     val discoveryManager = remember { VbanDiscoveryManager() }
+    val autoConnectManager = remember { AutoConnectManager() }
     val discoveredStreams by discoveryManager.discoveredStreams.collectAsState()
     val isScanning by discoveryManager.isScanning.collectAsState()
-    var showDiscoveredSheet by remember { mutableStateOf(false) }
 
+    var listenIp by remember { mutableStateOf("0.0.0.0") }
+    var portText by remember { mutableStateOf("6980") }
+    var streamName by remember { mutableStateOf("Stream1") }
+    var selectedDeviceId by remember { mutableIntStateOf(0) }
+
+    var showManualConfig by remember { mutableStateOf(false) }
+    var showAdvanced by remember { mutableStateOf(false) }
+
+    val scrollState = rememberScrollState()
+
+    // Discovery Lifecycle: sniff when idle, cleanly release socket when disposed
     LaunchedEffect(Unit) {
-        discoveryManager.start()
+        if (!isRunning) {
+            discoveryManager.start()
+        }
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -90,50 +135,103 @@ fun DashboardScreen(
         }
     }
 
-    var listenIp by remember { mutableStateOf("0.0.0.0") }
-    var portText by remember { mutableStateOf("6980") }
-    var streamName by remember { mutableStateOf("Stream1") }
-    var selectedDeviceId by remember { mutableIntStateOf(0) }
+    // Zero-Config Auto-Connect Execution:
+    // If exactly 1 stream is discovered on LAN while in standby, auto-connect fires once.
+    LaunchedEffect(discoveredStreams, isRunning) {
+        val stream = autoConnectManager.shouldAutoConnect(discoveredStreams, isRunning)
+        if (stream != null) {
+            autoConnectManager.markAutoConnected()
+            discoveryManager.pauseDiscoverySocket()
+            listenIp = stream.sourceIp
+            portText = stream.port.toString()
+            streamName = stream.streamName
+            onStartService(stream.sourceIp, stream.port, stream.streamName, selectedDeviceId)
+        }
+    }
 
-    val scrollState = rememberScrollState()
+    val selectedDeviceName = availableDevices.find { it.id == selectedDeviceId }?.name
+
+    val displayLatency = if (isRunning && telemetry.targetWatermarkMs > 0f) {
+        telemetry.targetWatermarkMs
+    } else if (isRunning && telemetry.sampleRate > 0) {
+        (telemetry.bufferOccupancyPercent / 100f) * 20f
+    } else {
+        0.0f
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = OledBlack
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(scrollState)
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header Bar
-            DashboardHeader(isRunning = isRunning)
-
-            // Connection Configuration Card
-            ConnectionConfigCard(
-                listenIp = listenIp,
-                onIpChanged = { listenIp = it },
-                portText = portText,
-                onPortChanged = { portText = it },
-                streamName = streamName,
-                onStreamNameChanged = { streamName = it },
+            // 1. Top Bar: VBAN title, format subtitle, LIVE/STANDBY pill
+            DashboardTopBar(
                 isRunning = isRunning,
-                discoveredCount = discoveredStreams.size,
-                onOpenDiscovery = { showDiscoveredSheet = true },
-                onTogglePlayback = {
-                    if (isRunning) {
-                        onStopService()
-                    } else {
-                        val port = portText.toIntOrNull() ?: 6980
-                        onStartService(listenIp, port, streamName, selectedDeviceId)
-                    }
-                }
+                sampleRate = telemetry.sampleRate
             )
 
-            // Audio Output Routing & Bit-Perfect Badge
+            // 2. Real-Time Latency Hero Dial (48sp bold readout, health status caption)
+            LatencyHeroDial(
+                latencyMs = displayLatency,
+                jitterMs = telemetry.jitterMs,
+                drops = telemetry.unrecoverableDrops,
+                glitches = telemetry.glitchCount,
+                isRunning = isRunning
+            )
+
+            // 3. Minimalist Stereo Level Meters (6dp ballistic micro-bars with dBFS readouts)
+            MinimalStereoMeter(
+                leftLinear = telemetry.peakLevelLeft,
+                rightLinear = telemetry.peakLevelRight,
+                isRunning = isRunning
+            )
+
+            // 4. Compact Active Stream Card
+            ActiveStreamCard(
+                streamName = streamName,
+                listenIp = listenIp,
+                port = portText,
+                telemetry = telemetry,
+                deviceName = selectedDeviceName,
+                isRunning = isRunning
+            )
+
+            // 5. Discovered Streams List with one-tap connect (active in standby)
+            if (!isRunning) {
+                DiscoveredStreamsList(
+                    streams = discoveredStreams,
+                    isScanning = isScanning,
+                    onStreamConnect = { stream ->
+                        autoConnectManager.markAutoConnected()
+                        discoveryManager.pauseDiscoverySocket()
+                        listenIp = stream.sourceIp
+                        portText = stream.port.toString()
+                        streamName = stream.streamName
+                        onStartService(stream.sourceIp, stream.port, stream.streamName, selectedDeviceId)
+                    }
+                )
+
+                // 6. Manual Connection Panel (collapsible fallback)
+                ManualConnectionCard(
+                    listenIp = listenIp,
+                    onIpChange = { listenIp = it },
+                    portText = portText,
+                    onPortChange = { portText = it },
+                    streamName = streamName,
+                    onStreamNameChange = { streamName = it },
+                    isExpanded = showManualConfig,
+                    onToggleExpand = { showManualConfig = !showManualConfig }
+                )
+            }
+
+            // 7. Audio Output Routing & Bit-Perfect Badge
             DeviceSelector(
                 devices = availableDevices,
                 selectedDeviceId = selectedDeviceId,
@@ -143,330 +241,561 @@ fun DashboardScreen(
                 }
             )
 
-            // Adaptive Latency / Jitter Buffer Profile Selector
-            LatencyProfileSelector(
-                selectedProfile = latencyProfile,
-                onProfileSelected = { NativeVbanEngine.setLatencyProfile(it) },
-                enabled = true
-            )
-
-            // 60 FPS Stereo VU Meter
-            StereoVuMeter(
-                leftLinear = telemetry.peakLevelLeft,
-                rightLinear = telemetry.peakLevelRight,
-                isRunning = isRunning
-            )
-
-            // 60 FPS Real-Time FFT Spectral Analyzer
-            SpectrumAnalyzer(
-                magnitudes = spectrumBands,
-                bandCount = 64,
-                isRunning = isRunning,
-                sampleRate = if (telemetry.sampleRate > 0) telemetry.sampleRate else 48000
-            )
-
-            // Buffer Watermark Gauge & Stream Telemetry
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            // 8. Collapsible Drawer housing Spectrum Analyzer & Latency Profile Selector
+            CollapsibleDrawer(
+                isExpanded = showAdvanced,
+                onToggle = { showAdvanced = !showAdvanced },
+                title = "HERRAMIENTAS AVANZADAS"
             ) {
-                BufferOccupancyGauge(
-                    occupancyPercent = telemetry.bufferOccupancyPercent,
-                    sampleRate = telemetry.sampleRate,
-                    jitterMs = telemetry.jitterMs,
-                    modifier = Modifier.weight(1f)
+                // 64-band real-time FFT Spectrum Analyzer
+                SpectrumAnalyzer(
+                    magnitudes = spectrumBands,
+                    bandCount = 64,
+                    isRunning = isRunning,
+                    sampleRate = if (telemetry.sampleRate > 0) telemetry.sampleRate else 48000
                 )
 
-                StreamTelemetryCard(
-                    telemetry = telemetry,
-                    isRunning = isRunning,
-                    modifier = Modifier.weight(1f)
+                // Adaptive Latency / Jitter Buffer Profile Selector
+                LatencyProfileSelector(
+                    selectedProfile = latencyProfile,
+                    onProfileSelected = { NativeVbanEngine.setLatencyProfile(it) },
+                    enabled = true
                 )
             }
-        }
 
-        // Zero-Config Discovered Streams Bottom Sheet
-        if (showDiscoveredSheet) {
-            DiscoveredStreamsSheet(
-                streams = discoveredStreams,
-                onStreamSelected = { stream ->
-                    listenIp = stream.sourceIp
-                    portText = stream.port.toString()
-                    streamName = stream.streamName
-                    showDiscoveredSheet = false
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 9. Full-Width Action Button: "DETENER RECEPCIÓN" or "INICIAR RECEPCIÓN"
+            Button(
+                onClick = {
+                    if (isRunning) {
+                        autoConnectManager.recordUserStop()
+                        onStopService()
+                        discoveryManager.resumeDiscoverySocket()
+                    } else {
+                        discoveryManager.pauseDiscoverySocket()
+                        val port = portText.toIntOrNull() ?: 6980
+                        onStartService(listenIp, port, streamName, selectedDeviceId)
+                    }
                 },
-                onDismissRequest = { showDiscoveredSheet = false },
-                isScanning = isScanning
-            )
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isRunning) StopRed else TextPrimary,
+                    contentColor = if (isRunning) TextPrimary else OledBlack
+                ),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(
+                    imageVector = if (isRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (isRunning) "DETENER RECEPCIÓN" else "INICIAR RECEPCIÓN",
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 1.2.sp,
+                    fontSize = 14.sp
+                )
+            }
         }
     }
 }
 
+/**
+ * High-contrast Bauhaus header bar with bold VBAN branding, high-res audio badge,
+ * and LIVE/STANDBY state pill.
+ */
 @Composable
-private fun DashboardHeader(isRunning: Boolean) {
+private fun DashboardTopBar(
+    isRunning: Boolean,
+    sampleRate: Int,
+    modifier: Modifier = Modifier
+) {
+    val subtitleText = if (isRunning && sampleRate > 0) {
+        "FLOAT32 ${sampleRate / 1000}K"
+    } else {
+        "FLOAT32 48K"
+    }
+
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column {
             Text(
-                text = "VBAN RECEPTOR",
+                text = "VBAN",
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onBackground,
-                letterSpacing = 1.5.sp
+                fontWeight = FontWeight.Black,
+                color = TextPrimary,
+                letterSpacing = 2.sp
             )
             Text(
-                text = "High-Res Float32 Low-Latency Audio",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
+                text = subtitleText,
+                style = HeroLabel,
+                color = TextMuted,
+                letterSpacing = 1.sp
             )
         }
 
         Box(
             modifier = Modifier
                 .background(
-                    color = if (isRunning) Color(0xFF00E676).copy(alpha = 0.2f) else Color(0xFF334155),
+                    color = if (isRunning) LiveGreen.copy(alpha = 0.12f) else DarkSurfaceVariant,
+                    shape = RoundedCornerShape(16.dp)
+                )
+                .border(
+                    width = 1.dp,
+                    color = if (isRunning) LiveGreen.copy(alpha = 0.35f) else DarkBorder,
                     shape = RoundedCornerShape(16.dp)
                 )
                 .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
-            Text(
-                text = if (isRunning) "STREAMING ACTIVE" else "STANDBY",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = if (isRunning) Color(0xFF00E676) else Color(0xFF94A3B8)
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(
+                            color = if (isRunning) LiveGreen else TextMuted,
+                            shape = CircleShape
+                        )
+                )
+                Text(
+                    text = if (isRunning) "LIVE" else "STANDBY",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isRunning) LiveGreen else TextMuted,
+                    letterSpacing = 1.sp
+                )
+            }
         }
     }
 }
 
+/**
+ * Compact active stream telemetry card displaying stream name, endpoint,
+ * format metadata, and hardware routing status.
+ */
 @Composable
-private fun ConnectionConfigCard(
-    listenIp: String,
-    onIpChanged: (String) -> Unit,
-    portText: String,
-    onPortChanged: (String) -> Unit,
+private fun ActiveStreamCard(
     streamName: String,
-    onStreamNameChanged: (String) -> Unit,
+    listenIp: String,
+    port: String,
+    telemetry: NativeTelemetry,
+    deviceName: String?,
     isRunning: Boolean,
-    discoveredCount: Int = 0,
-    onOpenDiscovery: () -> Unit = {},
-    onTogglePlayback: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        border = BorderStroke(1.dp, DarkBorder)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "NETWORK STREAM CONFIGURATION",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.1.sp
+                    text = "FLUJO ACTIVO",
+                    style = HeroLabel,
+                    color = TextMuted,
+                    letterSpacing = 1.5.sp
                 )
-
-                FilterChip(
-                    selected = discoveredCount > 0,
-                    onClick = onOpenDiscovery,
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Sensors,
-                            contentDescription = "Scan",
-                            modifier = Modifier.size(16.dp),
-                            tint = if (discoveredCount > 0) Color(0xFF00E5FF) else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    label = {
-                        Text(
-                            text = if (discoveredCount > 0) "$discoveredCount detectados" else "Escanear Red",
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    }
+                Text(
+                    text = if (isRunning) "AAUDIO EXCLUSIVE" else "DETENIDO",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isRunning) LiveGreen else TextMuted
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // IP & Port Inputs
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedTextField(
-                    value = listenIp,
-                    onValueChange = onIpChanged,
-                    label = { Text("Listen IP") },
-                    enabled = !isRunning,
-                    modifier = Modifier.weight(2f),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                Column {
+                    Text(
+                        text = streamName.ifBlank { "Stream1" },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        fontFamily = FontFamily.Monospace
                     )
-                )
-
-                OutlinedTextField(
-                    value = portText,
-                    onValueChange = onPortChanged,
-                    label = { Text("UDP Port") },
-                    enabled = !isRunning,
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    Text(
+                        text = "$listenIp:$port",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = TextMuted
                     )
-                )
-            }
+                }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // IP Presets (Unicast / Multicast)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = listenIp == "0.0.0.0",
-                    onClick = { onIpChanged("0.0.0.0") },
-                    label = { Text("Unicast (0.0.0.0)") },
-                    enabled = !isRunning
-                )
-                FilterChip(
-                    selected = listenIp == "239.255.0.1",
-                    onClick = { onIpChanged("239.255.0.1") },
-                    label = { Text("Multicast (239.255.0.1)") },
-                    enabled = !isRunning
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Stream Name Input
-            OutlinedTextField(
-                value = streamName,
-                onValueChange = onStreamNameChanged,
-                label = { Text("Stream Name (VBAN Header Filter)") },
-                enabled = !isRunning,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                )
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Primary Playback Toggle Button
-            Button(
-                onClick = onTogglePlayback,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isRunning) Color(0xFFEF4444) else MaterialTheme.colorScheme.primary
-                ),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Icon(
-                    imageVector = if (isRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (isRunning) "STOP RECEPTOR" else "START RECEPTOR",
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.0.sp
-                )
+                Column(horizontalAlignment = Alignment.End) {
+                    val srText = if (isRunning && telemetry.sampleRate > 0) "${telemetry.sampleRate} Hz" else "48000 Hz"
+                    val bdText = if (isRunning && telemetry.bitDepth > 0) "${telemetry.bitDepth}-bit" else "32-bit Float"
+                    Text(
+                        text = "$srText · $bdText",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = TextSecondary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (deviceName != null) {
+                        Text(
+                            text = deviceName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted
+                        )
+                    }
+                }
             }
         }
     }
 }
 
+/**
+ * Discovered streams list card displaying zero-config VBAN streams detected on LAN
+ * with one-tap connection buttons.
+ */
 @Composable
-private fun StreamTelemetryCard(
-    telemetry: NativeTelemetry,
-    isRunning: Boolean,
+fun DiscoveredStreamsList(
+    streams: List<DiscoveredStream>,
+    isScanning: Boolean,
+    onStreamConnect: (DiscoveredStream) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(12.dp)
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        border = BorderStroke(1.dp, DarkBorder)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = "STREAM TELEMETRY",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.1.sp
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Sensors,
+                        contentDescription = null,
+                        tint = if (streams.isNotEmpty()) LiveGreen else TextMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = if (streams.isNotEmpty()) "FLUJOS DETECTADOS (${streams.size})" else "FLUJOS DETECTADOS",
+                        style = HeroLabel,
+                        color = TextMuted,
+                        letterSpacing = 1.5.sp
+                    )
+                }
 
-            Spacer(modifier = Modifier.height(12.dp))
+                if (isScanning && streams.isEmpty()) {
+                    Text(
+                        text = "Escaneando...",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = TextMuted
+                    )
+                }
+            }
 
-            TelemetryItem(
-                label = "Sample Rate",
-                value = if (isRunning && telemetry.sampleRate > 0) "${telemetry.sampleRate} Hz" else "---"
-            )
-            TelemetryItem(
-                label = "Channels",
-                value = if (isRunning && telemetry.channelCount > 0) "${telemetry.channelCount} ch" else "---"
-            )
-            TelemetryItem(
-                label = "Bit Depth",
-                value = if (isRunning && telemetry.bitDepth > 0) "${telemetry.bitDepth}-bit" else "---"
-            )
-            TelemetryItem(
-                label = "Packets",
-                value = if (isRunning) "${telemetry.totalPacketsReceived}" else "---"
-            )
-            TelemetryItem(
-                label = "Loss Rate",
-                value = if (isRunning) String.format(Locale.US, "%.2f%%", telemetry.packetLossRatePercent) else "---",
-                isWarning = telemetry.packetLossRatePercent > 0.1f
-            )
+            if (streams.isEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = if (isScanning) "Buscando emisores VBAN en la red local..." else "Descubrimiento pausado",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted
+                    )
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    streams.forEach { stream ->
+                        DiscoveredStreamItem(
+                            stream = stream,
+                            onConnect = { onStreamConnect(stream) }
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
+/**
+ * Individual discovered stream item row with details and one-tap 'CONECTAR' button.
+ */
 @Composable
-private fun TelemetryItem(
-    label: String,
-    value: String,
-    isWarning: Boolean = false
+private fun DiscoveredStreamItem(
+    stream: DiscoveredStream,
+    onConnect: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = DarkSurfaceVariant,
+        border = BorderStroke(1.dp, DarkBorder)
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.SemiBold,
-            color = if (isWarning) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurface
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stream.streamName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    color = TextPrimary
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SettingsEthernet,
+                        contentDescription = null,
+                        tint = TextMuted,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = "${stream.sourceIp}:${stream.port} · ${stream.formatBadge}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = TextMuted
+                    )
+                }
+            }
+
+            Button(
+                onClick = onConnect,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = TextPrimary,
+                    contentColor = OledBlack
+                ),
+                shape = RoundedCornerShape(6.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "CONECTAR",
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Expandable manual configuration card allowing manual IP, Port, and Stream Name overrides.
+ */
+@Composable
+private fun ManualConnectionCard(
+    listenIp: String,
+    onIpChange: (String) -> Unit,
+    portText: String,
+    onPortChange: (String) -> Unit,
+    streamName: String,
+    onStreamNameChange: (String) -> Unit,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        border = BorderStroke(1.dp, DarkBorder)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggleExpand)
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = null,
+                        tint = TextMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "CONFIGURACIÓN MANUAL",
+                        style = HeroLabel,
+                        color = TextMuted,
+                        letterSpacing = 1.5.sp
+                    )
+                }
+
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = TextMuted,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            if (isExpanded) {
+                HorizontalDivider(thickness = 1.dp, color = DarkBorder)
+            }
+
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically(
+                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                ) + fadeIn(),
+                exit = shrinkVertically(
+                    animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing)
+                ) + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // IP & Port
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = listenIp,
+                            onValueChange = onIpChange,
+                            label = { Text("IP de escucha", fontFamily = FontFamily.Monospace) },
+                            modifier = Modifier.weight(2f),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = TextPrimary,
+                                unfocusedBorderColor = DarkBorder,
+                                focusedLabelColor = TextPrimary,
+                                unfocusedLabelColor = TextMuted,
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary,
+                                cursorColor = TextPrimary,
+                                focusedContainerColor = DarkSurfaceVariant,
+                                unfocusedContainerColor = DarkSurfaceVariant
+                            )
+                        )
+
+                        OutlinedTextField(
+                            value = portText,
+                            onValueChange = onPortChange,
+                            label = { Text("Puerto", fontFamily = FontFamily.Monospace) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = TextPrimary,
+                                unfocusedBorderColor = DarkBorder,
+                                focusedLabelColor = TextPrimary,
+                                unfocusedLabelColor = TextMuted,
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary,
+                                cursorColor = TextPrimary,
+                                focusedContainerColor = DarkSurfaceVariant,
+                                unfocusedContainerColor = DarkSurfaceVariant
+                            )
+                        )
+                    }
+
+                    // Presets
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = listenIp == "0.0.0.0",
+                            onClick = { onIpChange("0.0.0.0") },
+                            label = { Text("Unicast (0.0.0.0)", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = TextPrimary,
+                                selectedLabelColor = OledBlack,
+                                containerColor = DarkSurfaceVariant,
+                                labelColor = TextSecondary
+                            ),
+                            border = BorderStroke(1.dp, DarkBorder)
+                        )
+                        FilterChip(
+                            selected = listenIp == "239.255.0.1",
+                            onClick = { onIpChange("239.255.0.1") },
+                            label = { Text("Multicast (239.255.0.1)", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = TextPrimary,
+                                selectedLabelColor = OledBlack,
+                                containerColor = DarkSurfaceVariant,
+                                labelColor = TextSecondary
+                            ),
+                            border = BorderStroke(1.dp, DarkBorder)
+                        )
+                    }
+
+                    // Stream Name
+                    OutlinedTextField(
+                        value = streamName,
+                        onValueChange = onStreamNameChange,
+                        label = { Text("Nombre del Flujo (Filtro VBAN)", fontFamily = FontFamily.Monospace) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = TextPrimary,
+                            unfocusedBorderColor = DarkBorder,
+                            focusedLabelColor = TextPrimary,
+                            unfocusedLabelColor = TextMuted,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            cursorColor = TextPrimary,
+                            focusedContainerColor = DarkSurfaceVariant,
+                            unfocusedContainerColor = DarkSurfaceVariant
+                        )
+                    )
+                }
+            }
+        }
     }
 }
