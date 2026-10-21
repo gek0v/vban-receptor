@@ -100,6 +100,9 @@ object NativeVbanEngine {
     private val _telemetry = MutableStateFlow(NativeTelemetry())
     val telemetry: StateFlow<NativeTelemetry> = _telemetry.asStateFlow()
 
+    private val _detectedStreamName = MutableStateFlow("")
+    val detectedStreamName: StateFlow<String> = _detectedStreamName.asStateFlow()
+
     private val _latencyProfile = MutableStateFlow(com.vban.receptor.audio.LatencyProfile.DEFAULT)
     val latencyProfile: StateFlow<com.vban.receptor.audio.LatencyProfile> = _latencyProfile.asStateFlow()
 
@@ -148,6 +151,9 @@ object NativeVbanEngine {
 
     @JvmStatic
     private external fun getSpectrumBands(outArray: FloatArray): Boolean
+
+    @JvmStatic
+    private external fun getDetectedStreamName(): String
 
     // =========================================================================
     // Public API
@@ -228,6 +234,7 @@ object NativeVbanEngine {
         }
         _isRunning.value = false
         _telemetry.value = NativeTelemetry()
+        _detectedStreamName.value = ""
         Log.i(TAG, "VBAN Receiver stopped.")
     }
 
@@ -259,6 +266,10 @@ object NativeVbanEngine {
         if (!isLibraryLoaded.get() || !_isRunning.value) {
             return _telemetry.value
         }
+        val detected = try { getDetectedStreamName() } catch (_: Exception) { "" }
+        if (detected.isNotBlank() && _detectedStreamName.value != detected) {
+            _detectedStreamName.value = detected
+        }
         return getTelemetry() ?: _telemetry.value
     }
 
@@ -275,6 +286,10 @@ object NativeVbanEngine {
                     val snapshot = getTelemetry()
                     if (snapshot != null) {
                         _telemetry.value = snapshot
+                    }
+                    val detected = try { getDetectedStreamName() } catch (_: Exception) { "" }
+                    if (detected.isNotBlank() && _detectedStreamName.value != detected) {
+                        _detectedStreamName.value = detected
                     }
                     if (getSpectrumBands(spectrumBuffer)) {
                         _spectrumBands.value = spectrumBuffer.copyOf()

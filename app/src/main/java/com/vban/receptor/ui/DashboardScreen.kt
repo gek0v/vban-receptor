@@ -92,6 +92,7 @@ import com.vban.receptor.ui.theme.StopRed
 import com.vban.receptor.ui.theme.TextMuted
 import com.vban.receptor.ui.theme.TextPrimary
 import com.vban.receptor.ui.theme.TextSecondary
+import com.vban.receptor.ui.theme.WarningAmber
 
 /**
  * Main Bauhaus Minimalist Audiophile Dashboard for VBAN Receptor.
@@ -110,6 +111,7 @@ fun DashboardScreen(
 ) {
     val isRunning by NativeVbanEngine.isRunning.collectAsState()
     val telemetry by NativeVbanEngine.telemetry.collectAsState()
+    val detectedStreamName by NativeVbanEngine.detectedStreamName.collectAsState()
     val latencyProfile by NativeVbanEngine.latencyProfile.collectAsState()
     val spectrumBands by NativeVbanEngine.spectrumBands.collectAsState()
 
@@ -186,7 +188,8 @@ fun DashboardScreen(
             // 1. Top Bar: VBAN title, format subtitle, LIVE/STANDBY pill
             DashboardTopBar(
                 isRunning = isRunning,
-                sampleRate = telemetry.sampleRate
+                sampleRate = telemetry.sampleRate,
+                totalPackets = telemetry.totalPacketsReceived
             )
 
             // Local IP Address Banner with one-tap copy for Voicemeeter setup
@@ -214,6 +217,7 @@ fun DashboardScreen(
             // 4. Compact Active Stream Card
             ActiveStreamCard(
                 streamName = streamName,
+                detectedStreamName = detectedStreamName,
                 listenIp = if (transmitterIp.isNotBlank()) transmitterIp else listenIp,
                 port = portText,
                 telemetry = telemetry,
@@ -335,12 +339,29 @@ fun DashboardScreen(
 private fun DashboardTopBar(
     isRunning: Boolean,
     sampleRate: Int,
+    totalPackets: Long = 0L,
     modifier: Modifier = Modifier
 ) {
-    val subtitleText = if (isRunning && sampleRate > 0) {
-        "FLOAT32 ${sampleRate / 1000}K"
-    } else {
-        "FLOAT32 48K"
+    val isLive = isRunning && totalPackets > 0L
+    val isWaiting = isRunning && totalPackets == 0L
+
+    val subtitleText = when {
+        !isRunning -> "STANDBY"
+        isWaiting -> "ESPERANDO VBAN"
+        sampleRate > 0 -> "FLOAT32 ${sampleRate / 1000}K"
+        else -> "FLOAT32 48K"
+    }
+
+    val pillColor = when {
+        isLive -> LiveGreen
+        isWaiting -> WarningAmber
+        else -> TextMuted
+    }
+
+    val pillText = when {
+        isLive -> "LIVE"
+        isWaiting -> "ESPERANDO"
+        else -> "STANDBY"
     }
 
     Row(
@@ -367,12 +388,12 @@ private fun DashboardTopBar(
         Box(
             modifier = Modifier
                 .background(
-                    color = if (isRunning) LiveGreen.copy(alpha = 0.12f) else DarkSurfaceVariant,
+                    color = pillColor.copy(alpha = 0.12f),
                     shape = RoundedCornerShape(16.dp)
                 )
                 .border(
                     width = 1.dp,
-                    color = if (isRunning) LiveGreen.copy(alpha = 0.35f) else DarkBorder,
+                    color = pillColor.copy(alpha = 0.35f),
                     shape = RoundedCornerShape(16.dp)
                 )
                 .padding(horizontal = 12.dp, vertical = 6.dp)
@@ -385,15 +406,15 @@ private fun DashboardTopBar(
                     modifier = Modifier
                         .size(6.dp)
                         .background(
-                            color = if (isRunning) LiveGreen else TextMuted,
+                            color = pillColor,
                             shape = CircleShape
                         )
                 )
                 Text(
-                    text = if (isRunning) "LIVE" else "STANDBY",
+                    text = pillText,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = if (isRunning) LiveGreen else TextMuted,
+                    color = pillColor,
                     letterSpacing = 1.sp
                 )
             }
@@ -408,6 +429,7 @@ private fun DashboardTopBar(
 @Composable
 private fun ActiveStreamCard(
     streamName: String,
+    detectedStreamName: String = "",
     listenIp: String,
     port: String,
     telemetry: NativeTelemetry,
@@ -415,6 +437,13 @@ private fun ActiveStreamCard(
     isRunning: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val effectiveStreamName = when {
+        detectedStreamName.isNotBlank() -> detectedStreamName
+        streamName.isNotBlank() -> streamName
+        else -> "Cualquier Flujo (Auto)"
+    }
+    val hasSignal = isRunning && telemetry.totalPacketsReceived > 0L
+
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -439,11 +468,19 @@ private fun ActiveStreamCard(
                     letterSpacing = 1.5.sp
                 )
                 Text(
-                    text = if (isRunning) "AAUDIO EXCLUSIVE" else "DETENIDO",
+                    text = when {
+                        !isRunning -> "DETENIDO"
+                        !hasSignal -> "ESPERANDO PAQUETES"
+                        else -> "AAUDIO EXCLUSIVE"
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
-                    color = if (isRunning) LiveGreen else TextMuted
+                    color = when {
+                        !isRunning -> TextMuted
+                        !hasSignal -> WarningAmber
+                        else -> LiveGreen
+                    }
                 )
             }
 
@@ -454,14 +491,18 @@ private fun ActiveStreamCard(
             ) {
                 Column {
                     Text(
-                        text = streamName.ifBlank { "Cualquier Flujo (Auto)" },
+                        text = effectiveStreamName,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
                         fontFamily = FontFamily.Monospace
                     )
                     Text(
-                        text = "$listenIp:$port",
+                        text = when {
+                            !isRunning -> "$listenIp:$port"
+                            !hasSignal -> "$listenIp:$port · Sin señal"
+                            else -> "$listenIp:$port · ${telemetry.totalPacketsReceived} pkts"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,
                         color = TextMuted
@@ -469,13 +510,16 @@ private fun ActiveStreamCard(
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
-                    val srText = if (isRunning && telemetry.sampleRate > 0) "${telemetry.sampleRate} Hz" else "48000 Hz"
-                    val bdText = if (isRunning && telemetry.bitDepth > 0) "${telemetry.bitDepth}-bit" else "32-bit Float"
+                    val formatText = when {
+                        !isRunning -> "En espera"
+                        !hasSignal -> "0 Hz · 0-bit"
+                        else -> "${telemetry.sampleRate} Hz · ${telemetry.bitDepth}-bit"
+                    }
                     Text(
-                        text = "$srText · $bdText",
+                        text = formatText,
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,
-                        color = TextSecondary,
+                        color = if (hasSignal) TextSecondary else TextMuted,
                         fontWeight = FontWeight.SemiBold
                     )
                     if (deviceName != null) {
@@ -734,6 +778,7 @@ private fun ManualConnectionCard(
                             value = listenIp,
                             onValueChange = onIpChange,
                             label = { Text("IP de escucha", fontFamily = FontFamily.Monospace) },
+                            supportingText = { Text("0.0.0.0 escucha en todas las interfaces", style = MaterialTheme.typography.labelSmall, color = TextMuted) },
                             modifier = Modifier.weight(2f),
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(

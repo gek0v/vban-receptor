@@ -219,18 +219,30 @@ NativeTelemetry VbanEngine::getTelemetry() const noexcept {
         telem.totalPacketsReceived = rxTelem.totalPacketsReceived;
         telem.lostPackets = rxTelem.lostPackets;
         telem.jitterMs = rxTelem.jitterMs;
-        telem.sampleRate = rxTelem.activeSampleRate ? rxTelem.activeSampleRate : defaultRate;
-        telem.channelCount = rxTelem.activeChannels ? rxTelem.activeChannels : defaultCh;
-        telem.bitDepth = rxTelem.activeBitDepth ? rxTelem.activeBitDepth : 24;
+        if (rxTelem.totalPacketsReceived > 0) {
+            telem.sampleRate = rxTelem.activeSampleRate ? rxTelem.activeSampleRate : defaultRate;
+            telem.channelCount = rxTelem.activeChannels ? rxTelem.activeChannels : defaultCh;
+            telem.bitDepth = rxTelem.activeBitDepth ? rxTelem.activeBitDepth : 16;
+        } else {
+            telem.sampleRate = 0;
+            telem.channelCount = 0;
+            telem.bitDepth = 0;
+        }
         telem.unrecoverableDrops = receiver_->getUnrecoverableDrops();
     } else {
         const auto parserTelem = parser_.getTelemetry();
         telem.totalPacketsReceived = parserTelem.totalPacketsReceived;
         telem.lostPackets = parserTelem.lostPackets;
         telem.jitterMs = static_cast<float>(parserTelem.jitterMs);
-        telem.sampleRate = defaultRate;
-        telem.channelCount = defaultCh;
-        telem.bitDepth = 24;
+        if (parserTelem.totalPacketsReceived > 0) {
+            telem.sampleRate = defaultRate;
+            telem.channelCount = defaultCh;
+            telem.bitDepth = 16;
+        } else {
+            telem.sampleRate = 0;
+            telem.channelCount = 0;
+            telem.bitDepth = 0;
+        }
         telem.unrecoverableDrops = receiver_ ? receiver_->getUnrecoverableDrops() : 0;
     }
 

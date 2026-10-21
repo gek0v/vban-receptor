@@ -232,9 +232,9 @@ private:
     std::string m_workerStreamName;
 
     // Format tracking for dynamic reconfiguration
-    std::atomic<uint32_t> m_activeSampleRate{48000};
-    std::atomic<uint16_t> m_activeChannels{2};
-    std::atomic<uint16_t> m_activeBitDepth{16};
+    std::atomic<uint32_t> m_activeSampleRate{0};
+    std::atomic<uint16_t> m_activeChannels{0};
+    std::atomic<uint16_t> m_activeBitDepth{0};
 
     // Telemetry atomics
     std::atomic<uint64_t> m_totalBytesReceived{0};

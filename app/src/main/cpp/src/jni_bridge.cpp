@@ -210,4 +210,17 @@ Java_com_vban_receptor_native_NativeVbanEngine_getSpectrumBands(
     return hasNew ? JNI_TRUE : JNI_FALSE;
 }
 
+/**
+ * Retrieves the currently detected active stream name.
+ */
+JNIEXPORT jstring JNICALL
+Java_com_vban_receptor_native_NativeVbanEngine_getDetectedStreamName(
+    JNIEnv* env, jobject /*thiz*/) {
+    if (!env) {
+        return nullptr;
+    }
+    const std::string name = vban::VbanEngine::getInstance().getDetectedStreamName();
+    return env->NewStringUTF(name.c_str());
+}
+
 } // extern "C"

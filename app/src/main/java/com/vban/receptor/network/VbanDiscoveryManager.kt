@@ -506,6 +506,25 @@ class VbanDiscoveryManager(
          * Prioritizes active Wi-Fi (wlan) and Ethernet (eth) adapters.
          */
         fun getLocalIpAddress(context: Context? = null): String {
+            if (context != null) {
+                try {
+                    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+                    val activeNetwork = cm?.activeNetwork
+                    if (activeNetwork != null) {
+                        val lp = cm.getLinkProperties(activeNetwork)
+                        for (linkAddress in lp?.linkAddresses.orEmpty()) {
+                            val addr = linkAddress.address
+                            if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
+                                val host = addr.hostAddress
+                                if (!host.isNullOrBlank() && host != "0.0.0.0") {
+                                    return host
+                                }
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
             try {
                 val interfaces = NetworkInterface.getNetworkInterfaces() ?: return "0.0.0.0"
                 var fallbackIp: String? = null

@@ -423,8 +423,10 @@ TEST_CASE("jni_telemetry_concurrent_snapshot_integrity") {
             snapshot.peakLevelRight = receiver.getPeakRight();
 
             // Invariant assertions
-            if (snapshot.sampleRate != 48000 || snapshot.channelCount != 2 || snapshot.bitDepth != 16) {
-                consistencyViolation.store(true);
+            if (snapshot.totalPacketsReceived > 0) {
+                if (snapshot.sampleRate != 48000 || snapshot.channelCount != 2 || snapshot.bitDepth != 16) {
+                    consistencyViolation.store(true);
+                }
             }
             if (snapshot.lostPackets > snapshot.totalPacketsReceived) {
                 consistencyViolation.store(true);
@@ -577,6 +579,58 @@ TEST_CASE("receiver_promiscuous_mode_accepts_arbitrary_stream_names") {
     auto telem2 = receiver.getTelemetry();
     EXPECT_EQ(std::string(telem2.activeStreamName), "CustomStream2");
     EXPECT_EQ(telem2.validPackets, 2U);
+
+    receiver.stop();
+}
+
+TEST_CASE("receiver_dynamic_bit_depth_and_zero_initial_telemetry") {
+    WsaGuard wsa;
+    vban::SpscRingBuffer<float, vban::VBAN_RING_BUFFER_CAPACITY> ringBuffer;
+    vban::VbanReceiver receiver(ringBuffer);
+
+    vban::ReceiverSocketConfig cfg;
+    cfg.listenIp = "127.0.0.1";
+    cfg.port = 17986;
+    cfg.streamName = "";
+
+    ASSERT_TRUE(receiver.start(cfg));
+
+    // 1. Initial telemetry before any packets arrive must report 0 for format
+    auto telem0 = receiver.getTelemetry();
+    EXPECT_EQ(telem0.totalPacketsReceived, 0U);
+    EXPECT_EQ(telem0.activeSampleRate, 0U);
+    EXPECT_EQ(telem0.activeChannels, 0U);
+    EXPECT_EQ(telem0.activeBitDepth, 0U);
+
+    // 2. First packet arrives: 48000 Hz, 2 channels, 24-bit PCM
+    auto packet24 = createTestVbanPacket(3, 255, 1, vban::VBanDataType::Int24, "Stream1", 1);
+    EXPECT_TRUE(receiver.processDatagram(packet24.data(), packet24.size()));
+
+    auto telem1 = receiver.getTelemetry();
+    EXPECT_EQ(telem1.totalPacketsReceived, 1U);
+    EXPECT_EQ(telem1.activeSampleRate, 48000U);
+    EXPECT_EQ(telem1.activeChannels, 2U);
+    EXPECT_EQ(telem1.activeBitDepth, 24U);
+
+    // 3. Second packet arrives: Same rate (48000 Hz) and channels (2), but bit depth switches to 16-bit
+    auto packet16 = createTestVbanPacket(3, 255, 1, vban::VBanDataType::Int16, "Stream1", 2);
+    EXPECT_TRUE(receiver.processDatagram(packet16.data(), packet16.size()));
+
+    auto telem2 = receiver.getTelemetry();
+    EXPECT_EQ(telem2.totalPacketsReceived, 2U);
+    EXPECT_EQ(telem2.activeSampleRate, 48000U);
+    EXPECT_EQ(telem2.activeChannels, 2U);
+    EXPECT_EQ(telem2.activeBitDepth, 16U);
+
+    // 4. Third packet arrives: Same rate and channels, but bit depth switches to Float32
+    auto packet32 = createTestVbanPacket(3, 255, 1, vban::VBanDataType::Float32, "Stream1", 3);
+    EXPECT_TRUE(receiver.processDatagram(packet32.data(), packet32.size()));
+
+    auto telem3 = receiver.getTelemetry();
+    EXPECT_EQ(telem3.totalPacketsReceived, 3U);
+    EXPECT_EQ(telem3.activeSampleRate, 48000U);
+    EXPECT_EQ(telem3.activeChannels, 2U);
+    EXPECT_EQ(telem3.activeBitDepth, 32U);
 
     receiver.stop();
 }

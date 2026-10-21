@@ -295,6 +295,9 @@ bool VbanReceiver::start(const ReceiverSocketConfig& config) {
     m_workerStreamName = config.streamName;
     m_parser.reset();
     m_reorderQueue.reset();
+    m_activeSampleRate.store(0, std::memory_order_relaxed);
+    m_activeChannels.store(0, std::memory_order_relaxed);
+    m_activeBitDepth.store(0, std::memory_order_relaxed);
     m_totalBytesReceived.store(0, std::memory_order_relaxed);
     m_overflowFrames.store(0, std::memory_order_relaxed);
     m_peakLeft.store(0.0f, std::memory_order_relaxed);
@@ -354,17 +357,23 @@ bool VbanReceiver::processDatagram(const uint8_t* buffer, size_t size, uint64_t 
     // 1. Dynamic stream format change detection
     const uint32_t incomingRate = packet.sampleRate;
     const uint16_t incomingChannels = packet.channels;
+    const uint16_t incomingBitDepth = static_cast<uint16_t>(packet.sampleSize * 8);
     const uint32_t activeRate = m_activeSampleRate.load(std::memory_order_relaxed);
     const uint16_t activeChannels = m_activeChannels.load(std::memory_order_relaxed);
+    const uint16_t activeBitDepth = m_activeBitDepth.load(std::memory_order_relaxed);
+
+    if (incomingBitDepth != activeBitDepth) [[unlikely]] {
+        m_activeBitDepth.store(incomingBitDepth, std::memory_order_release);
+    }
 
     if (incomingRate != activeRate || incomingChannels != activeChannels) [[unlikely]] {
+        const bool isInitialStream = (activeRate == 0 && activeChannels == 0);
         m_activeSampleRate.store(incomingRate, std::memory_order_release);
         m_activeChannels.store(incomingChannels, std::memory_order_release);
-        m_activeBitDepth.store(packet.sampleSize * 8, std::memory_order_release);
 
         m_reorderQueue.reset();
 
-        if (m_reconfigCb) {
+        if (m_reconfigCb && (!isInitialStream || incomingRate != 48000 || incomingChannels != 2)) {
             m_reconfigCb(incomingRate, incomingChannels);
         }
     }
