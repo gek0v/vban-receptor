@@ -520,6 +520,7 @@ public:
     void reset() noexcept;
 
     void setTargetLatencyMs(float targetMs, uint32_t sampleRate) noexcept;
+    void setNetworkJitter(float jitterMs, uint32_t burstFrames) noexcept;
     void reconfigure(uint32_t sampleRate, uint16_t channels) noexcept;
 
     void triggerFadeIn() noexcept { m_fadeEngine.startFadeIn(); }
@@ -553,6 +554,7 @@ public:
         );
 
         if (framesProduced < outputFrames) [[unlikely]] {
+            m_glitchCount.fetch_add(1, std::memory_order_relaxed);
             m_resampler.unprime();
             m_fadeEngine.emergencyFadeOut(output, framesProduced, outputFrames, channels);
         } else {
@@ -563,6 +565,26 @@ public:
         }
 
         return framesProduced;
+    }
+
+    [[nodiscard]] float getTargetWatermarkMs() const noexcept {
+        return m_targetWatermarkMs.load(std::memory_order_relaxed);
+    }
+
+    [[nodiscard]] uint64_t getGlitchCount() const noexcept {
+        return m_glitchCount.load(std::memory_order_relaxed);
+    }
+
+    [[nodiscard]] uint64_t getUnrecoverableDrops() const noexcept {
+        return m_unrecoverableDrops.load(std::memory_order_relaxed);
+    }
+
+    void setUnrecoverableDrops(uint64_t drops) noexcept {
+        m_unrecoverableDrops.store(drops, std::memory_order_relaxed);
+    }
+
+    void incrementUnrecoverableDrops(uint64_t count = 1) noexcept {
+        m_unrecoverableDrops.fetch_add(count, std::memory_order_relaxed);
     }
 
     [[nodiscard]] float getCurrentRatio() const noexcept {
@@ -607,6 +629,10 @@ private:
     std::atomic<float> m_telemetrySmoothedWatermark{0.0f};
     std::atomic<float> m_telemetrySmoothedPercent{0.0f};
     std::atomic<float> m_telemetryRawPercent{0.0f};
+
+    std::atomic<float> m_targetWatermarkMs{10.0f};
+    std::atomic<uint64_t> m_glitchCount{0};
+    std::atomic<uint64_t> m_unrecoverableDrops{0};
 };
 
 using DriftCompensator = ClockDriftCompensator;

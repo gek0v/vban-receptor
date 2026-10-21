@@ -172,7 +172,7 @@ private:
 
     VbanParser parser_{"Stream1"};
     SpscRingBuffer<float, VBAN_RING_BUFFER_CAPACITY> ringBuffer_;
-    DriftCompensator compensator_;
+    mutable DriftCompensator compensator_;
     std::unique_ptr<OboePlayer> player_;
     std::unique_ptr<VbanReceiver> receiver_;
 

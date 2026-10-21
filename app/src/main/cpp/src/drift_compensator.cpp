@@ -118,6 +118,12 @@ void ClockDriftCompensator::reset() noexcept {
     m_telemetrySmoothedWatermark.store(targetFrames, std::memory_order_relaxed);
     m_telemetrySmoothedPercent.store(targetPct, std::memory_order_relaxed);
     m_telemetryRawPercent.store(targetPct, std::memory_order_relaxed);
+
+    m_glitchCount.store(0, std::memory_order_relaxed);
+    m_unrecoverableDrops.store(0, std::memory_order_relaxed);
+    const double sr = (m_sampleRate > 0) ? static_cast<double>(m_sampleRate) : 48000.0;
+    const float targetMs = static_cast<float>((static_cast<double>(targetFrames) / sr) * 1000.0);
+    m_targetWatermarkMs.store(targetMs, std::memory_order_relaxed);
 }
 
 void ClockDriftCompensator::setTargetLatencyMs(float targetMs, uint32_t sampleRate) noexcept {
@@ -125,7 +131,20 @@ void ClockDriftCompensator::setTargetLatencyMs(float targetMs, uint32_t sampleRa
         return;
     }
     m_sampleRate = sampleRate;
+    m_targetWatermarkMs.store(targetMs, std::memory_order_relaxed);
     const double targetFrames = (static_cast<double>(targetMs) * 0.001) * sampleRate;
+    const double targetPct = (targetFrames / static_cast<double>(m_config.ringBufferCapacity)) * 100.0;
+    m_config.targetOccupancyPercent = std::clamp(targetPct, 0.5, 95.0);
+}
+
+void ClockDriftCompensator::setNetworkJitter(float jitterMs, uint32_t burstFrames) noexcept {
+    const float sr = (m_sampleRate > 0) ? static_cast<float>(m_sampleRate) : 48000.0f;
+    const float burstMs = (burstFrames > 0) ? (static_cast<float>(burstFrames) * 1000.0f / sr) : 4.0f;
+    float targetMs = std::max(burstMs * 2.0f, burstMs + 2.5f * jitterMs);
+    targetMs = std::clamp(targetMs, 5.0f, 25.0f);
+    m_targetWatermarkMs.store(targetMs, std::memory_order_relaxed);
+
+    const double targetFrames = (static_cast<double>(targetMs) * 0.001) * static_cast<double>(sr);
     const double targetPct = (targetFrames / static_cast<double>(m_config.ringBufferCapacity)) * 100.0;
     m_config.targetOccupancyPercent = std::clamp(targetPct, 0.5, 95.0);
 }

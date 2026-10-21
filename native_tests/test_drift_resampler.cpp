@@ -532,3 +532,77 @@ TEST_CASE("drift_resampler_starvation_recovery_unmutes_and_resumes") {
     }
 }
 
+// ==============================================================================
+// 12. Dynamic Jitter Watermark & Burst Guard Underrun Tracking
+// ==============================================================================
+TEST_CASE("dynamic_watermark_adapts_to_high_network_jitter") {
+    vban::ClockDriftConfig config;
+    config.ringBufferCapacity = 262144;
+    vban::ClockDriftCompensator compensator(config);
+    compensator.reconfigure(48000, 2);
+
+    // Baseline jitter 0.5 ms -> target latency ~6-8 ms
+    compensator.setNetworkJitter(0.5f, 192);
+    float lowTarget = compensator.getTargetWatermarkMs();
+    ASSERT_TRUE(lowTarget >= 5.0f && lowTarget <= 10.0f);
+
+    // High jitter 6.0 ms -> target latency expands to ~12-16 ms
+    compensator.setNetworkJitter(6.0f, 192);
+    float highTarget = compensator.getTargetWatermarkMs();
+    ASSERT_TRUE(highTarget > lowTarget);
+    ASSERT_TRUE(highTarget >= 12.0f);
+}
+
+TEST_CASE("dynamic_watermark_clamping_bounds") {
+    vban::ClockDriftConfig config;
+    vban::ClockDriftCompensator compensator(config);
+    compensator.reconfigure(48000, 2);
+
+    // Very low jitter and small burst -> clamped to minimum 5.0 ms
+    compensator.setNetworkJitter(0.0f, 48); // 1.0 ms burst, 2*burst = 2.0 ms -> clamp to 5.0 ms
+    ASSERT_NEAR(compensator.getTargetWatermarkMs(), 5.0f, 1e-4f);
+
+    // Very high jitter -> clamped to maximum 25.0 ms
+    compensator.setNetworkJitter(50.0f, 192);
+    ASSERT_NEAR(compensator.getTargetWatermarkMs(), 25.0f, 1e-4f);
+}
+
+TEST_CASE("drift_compensator_glitch_count_and_unrecoverable_drops") {
+    vban::ClockDriftConfig cfg;
+    cfg.ringBufferCapacity = 1024;
+    vban::ClockDriftCompensator comp(cfg);
+    comp.reconfigure(48000, 2);
+
+    ASSERT_EQ(comp.getGlitchCount(), 0U);
+    ASSERT_EQ(comp.getUnrecoverableDrops(), 0U);
+
+    vban::SpscRingBuffer<float, 1024> ringBuffer;
+    std::vector<float> outBuf(128 * 2, 0.0f);
+
+    // Process on empty buffer causes underrun / starvation
+    size_t rendered = comp.process(ringBuffer, outBuf.data(), 128, 2);
+    ASSERT_EQ(rendered, 0U);
+    ASSERT_EQ(comp.getGlitchCount(), 1U);
+
+    // Process again on empty buffer
+    rendered = comp.process(ringBuffer, outBuf.data(), 128, 2);
+    ASSERT_EQ(rendered, 0U);
+    ASSERT_EQ(comp.getGlitchCount(), 2U);
+
+    // Put audio into ring buffer
+    std::vector<float> audio(256 * 2, 0.5f);
+    ringBuffer.write(audio.data(), audio.size());
+
+    // Healthy process does not increment glitch count
+    rendered = comp.process(ringBuffer, outBuf.data(), 128, 2);
+    ASSERT_EQ(rendered, 128U);
+    ASSERT_EQ(comp.getGlitchCount(), 2U);
+
+    // Test unrecoverable drops tracking
+    comp.incrementUnrecoverableDrops(3);
+    ASSERT_EQ(comp.getUnrecoverableDrops(), 3U);
+    comp.setUnrecoverableDrops(7);
+    ASSERT_EQ(comp.getUnrecoverableDrops(), 7U);
+}
+
+

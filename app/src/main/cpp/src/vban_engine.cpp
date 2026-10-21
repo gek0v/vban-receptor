@@ -86,6 +86,9 @@ bool VbanEngine::start(const std::string& listenIp, uint16_t port, const std::st
         playerConfig.channelCount = m_currentChannels.load(std::memory_order_acquire);
         playerConfig.deviceId = deviceId;
         player_->start(playerConfig);
+
+        const int32_t burst = player_->getFramesPerBurst() > 0 ? player_->getFramesPerBurst() : 192;
+        compensator_.setNetworkJitter(0.0f, static_cast<uint32_t>(burst));
     }
 
     // Launch high-priority UDP network receiver
@@ -240,6 +243,10 @@ NativeTelemetry VbanEngine::getTelemetry() const noexcept {
     telem.peakLevelLeft = peakL;
     telem.peakLevelRight = peakR;
 
+    const int32_t burst = (player_ && player_->getFramesPerBurst() > 0) ? player_->getFramesPerBurst() : 192;
+    compensator_.setNetworkJitter(telem.jitterMs, static_cast<uint32_t>(burst));
+    compensator_.setUnrecoverableDrops(telem.lostPackets);
+
     return telem;
 }
 
@@ -276,6 +283,11 @@ bool VbanEngine::processPacket(const uint8_t* buffer, size_t size) {
     }
 
     ringBuffer_.write(staging.data(), totalSamples);
+
+    const int32_t burst = (player_ && player_->getFramesPerBurst() > 0) ? player_->getFramesPerBurst() : 192;
+    compensator_.setNetworkJitter(static_cast<float>(parser_.getTelemetry().jitterMs), static_cast<uint32_t>(burst));
+    compensator_.setUnrecoverableDrops(parser_.getTelemetry().lostPackets);
+
     return true;
 }
 
