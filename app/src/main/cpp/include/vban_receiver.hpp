@@ -14,6 +14,7 @@
 #include "vban_parser.hpp"
 #include "vban_converter.hpp"
 #include "spsc_ring_buffer.hpp"
+#include "packet_reorder_queue.hpp"
 
 namespace vban {
 
@@ -158,6 +159,23 @@ public:
     bool processDatagram(const uint8_t* buffer, size_t size) noexcept;
 
     /**
+     * Alias for packet processing pipeline.
+     */
+    bool processPacket(const uint8_t* buffer, size_t size) noexcept {
+        return processDatagram(buffer, size);
+    }
+
+    /**
+     * Access underlying packet reorder and PLC queue.
+     */
+    [[nodiscard]] PacketReorderQueue<float, 16, STAGING_MAX_SAMPLES>& getReorderQueue() noexcept {
+        return m_reorderQueue;
+    }
+    [[nodiscard]] const PacketReorderQueue<float, 16, STAGING_MAX_SAMPLES>& getReorderQueue() const noexcept {
+        return m_reorderQueue;
+    }
+
+    /**
      * Helper: Detect if an IPv4 string belongs to Class D multicast (224.0.0.0 - 239.255.255.255).
      */
     [[nodiscard]] static bool isMulticastAddress(std::string_view ip) noexcept;
@@ -200,9 +218,13 @@ private:
     std::atomic<float>    m_peakLeft{0.0f};
     std::atomic<float>    m_peakRight{0.0f};
 
+    // UDP Packet Reorder & PLC Queue (16 slots)
+    PacketReorderQueue<float, 16, STAGING_MAX_SAMPLES> m_reorderQueue;
+
     // Pre-allocated buffers (strictly zero runtime heap allocations in inner loop)
     alignas(16) std::array<uint8_t, RX_BUFFER_CAPACITY> m_rxBuffer{};
     alignas(64) std::array<float, STAGING_MAX_SAMPLES>  m_stagingBuffer{};
+    alignas(64) std::array<float, STAGING_MAX_SAMPLES>  m_reorderPopBuffer{};
 };
 
 } // namespace vban

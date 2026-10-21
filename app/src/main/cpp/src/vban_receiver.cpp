@@ -282,6 +282,7 @@ bool VbanReceiver::start(const ReceiverSocketConfig& config) {
     m_config = config;
     m_parser.setTargetStreamName(config.streamName);
     m_parser.reset();
+    m_reorderQueue.reset();
     m_totalBytesReceived.store(0, std::memory_order_relaxed);
     m_overflowFrames.store(0, std::memory_order_relaxed);
     m_peakLeft.store(0.0f, std::memory_order_relaxed);
@@ -343,6 +344,8 @@ bool VbanReceiver::processDatagram(const uint8_t* buffer, size_t size, uint64_t 
         m_activeChannels.store(incomingChannels, std::memory_order_release);
         m_activeBitDepth.store(packet.sampleSize * 8, std::memory_order_release);
 
+        m_reorderQueue.reset();
+
         if (m_reconfigCb) {
             m_reconfigCb(incomingRate, incomingChannels);
         }
@@ -365,40 +368,51 @@ bool VbanReceiver::processDatagram(const uint8_t* buffer, size_t size, uint64_t 
         return false;
     }
 
-    // 3. Peak level calculation for telemetry
+    // 3. Push dequantized samples into UDP Packet Reorder & PLC Queue
+    m_reorderQueue.push(packet.frameNumber, m_stagingBuffer.data(), totalSamples);
+
+    // 4. Pop ordered samples from Reorder Queue and write to SPSC Ring Buffer
     constexpr float decayFactor = 0.95f;
-    const float prevL = m_peakLeft.load(std::memory_order_relaxed);
-    const float prevR = m_peakRight.load(std::memory_order_relaxed);
+    const uint16_t ch = incomingChannels;
 
-    if (packet.channels >= 2) {
-        float peakL = 0.0f;
-        float peakR = 0.0f;
-        calculatePeakLevelsStereo(m_stagingBuffer.data(), packet.samplesPerFrame, peakL, peakR);
-        m_peakLeft.store(std::max(peakL, prevL * decayFactor), std::memory_order_relaxed);
-        m_peakRight.store(std::max(peakR, prevR * decayFactor), std::memory_order_relaxed);
-    } else if (packet.channels == 1) {
-        float maxMono = 0.0f;
-        for (size_t i = 0; i < packet.samplesPerFrame; ++i) {
-            float v = std::abs(m_stagingBuffer[i]);
-            if (v > maxMono) maxMono = v;
+    bool wasPlc = false;
+    size_t popped = 0;
+    while ((popped = m_reorderQueue.popOrdered(m_reorderPopBuffer.data(), m_reorderPopBuffer.size(), wasPlc)) > 0) {
+        // Peak level calculation for telemetry
+        const float prevL = m_peakLeft.load(std::memory_order_relaxed);
+        const float prevR = m_peakRight.load(std::memory_order_relaxed);
+        const size_t frames = (ch > 0) ? (popped / ch) : 0;
+
+        if (ch >= 2) {
+            float peakL = 0.0f;
+            float peakR = 0.0f;
+            calculatePeakLevelsStereo(m_reorderPopBuffer.data(), frames, peakL, peakR);
+            m_peakLeft.store(std::max(peakL, prevL * decayFactor), std::memory_order_relaxed);
+            m_peakRight.store(std::max(peakR, prevR * decayFactor), std::memory_order_relaxed);
+        } else if (ch == 1) {
+            float maxMono = 0.0f;
+            for (size_t i = 0; i < popped; ++i) {
+                float v = std::abs(m_reorderPopBuffer[i]);
+                if (v > maxMono) maxMono = v;
+            }
+            m_peakLeft.store(std::max(maxMono, prevL * decayFactor), std::memory_order_relaxed);
+            m_peakRight.store(std::max(maxMono, prevR * decayFactor), std::memory_order_relaxed);
         }
-        m_peakLeft.store(std::max(maxMono, prevL * decayFactor), std::memory_order_relaxed);
-        m_peakRight.store(std::max(maxMono, prevR * decayFactor), std::memory_order_relaxed);
-    }
 
-    // 4. Write interleaved Float32 whole frames to Lock-Free SPSC Ring Buffer
-    const size_t available = m_ringBuffer.availableWrite();
-    const size_t maxWholeFrames = available / packet.channels;
-    const size_t samplesToWrite = std::min(totalSamples, maxWholeFrames * packet.channels);
+        // Write interleaved Float32 whole frames to Lock-Free SPSC Ring Buffer
+        const size_t available = m_ringBuffer.availableWrite();
+        const size_t maxWholeFrames = (ch > 0) ? (available / ch) : 0;
+        const size_t samplesToWrite = (ch > 0) ? std::min(popped, maxWholeFrames * ch) : 0;
 
-    if (samplesToWrite > 0) {
-        m_ringBuffer.write(m_stagingBuffer.data(), samplesToWrite);
-    }
+        if (samplesToWrite > 0) {
+            m_ringBuffer.write(m_reorderPopBuffer.data(), samplesToWrite);
+        }
 
-    // 5. Overrun / Overflow Accounting
-    if (samplesToWrite < totalSamples) [[unlikely]] {
-        const size_t droppedFrames = (totalSamples - samplesToWrite) / packet.channels;
-        m_overflowFrames.fetch_add(droppedFrames, std::memory_order_relaxed);
+        // Overrun / Overflow Accounting
+        if (samplesToWrite < popped) [[unlikely]] {
+            const size_t droppedFrames = (ch > 0) ? ((popped - samplesToWrite) / ch) : 0;
+            m_overflowFrames.fetch_add(droppedFrames, std::memory_order_relaxed);
+        }
     }
 
     return true;
