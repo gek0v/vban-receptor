@@ -571,6 +571,10 @@ public:
         return m_targetWatermarkMs.load(std::memory_order_relaxed);
     }
 
+    [[nodiscard]] double getTargetOccupancyPercent() const noexcept {
+        return m_targetOccupancyPercent.load(std::memory_order_relaxed);
+    }
+
     [[nodiscard]] uint64_t getGlitchCount() const noexcept {
         return m_glitchCount.load(std::memory_order_relaxed);
     }
@@ -631,6 +635,7 @@ private:
     std::atomic<float> m_telemetryRawPercent{0.0f};
 
     std::atomic<float> m_targetWatermarkMs{10.0f};
+    std::atomic<double> m_targetOccupancyPercent{50.0};
     std::atomic<uint64_t> m_glitchCount{0};
     std::atomic<uint64_t> m_unrecoverableDrops{0};
 };

@@ -544,13 +544,16 @@ TEST_CASE("dynamic_watermark_adapts_to_high_network_jitter") {
     // Baseline jitter 0.5 ms -> target latency ~6-8 ms
     compensator.setNetworkJitter(0.5f, 192);
     float lowTarget = compensator.getTargetWatermarkMs();
+    double lowOccupancy = compensator.getTargetOccupancyPercent();
     ASSERT_TRUE(lowTarget >= 5.0f && lowTarget <= 10.0f);
 
     // High jitter 6.0 ms -> target latency expands to ~12-16 ms
     compensator.setNetworkJitter(6.0f, 192);
     float highTarget = compensator.getTargetWatermarkMs();
+    double highOccupancy = compensator.getTargetOccupancyPercent();
     ASSERT_TRUE(highTarget > lowTarget);
     ASSERT_TRUE(highTarget >= 12.0f);
+    ASSERT_TRUE(highOccupancy > lowOccupancy);
 }
 
 TEST_CASE("dynamic_watermark_clamping_bounds") {
