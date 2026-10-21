@@ -102,6 +102,10 @@ public:
      */
     NativeTelemetry getTelemetry() const noexcept;
 
+    [[nodiscard]] float getTargetWatermarkMs() const noexcept { return compensator_.getTargetWatermarkMs(); }
+    [[nodiscard]] uint64_t getUnrecoverableDrops() const noexcept { return compensator_.getUnrecoverableDrops(); }
+    [[nodiscard]] uint64_t getGlitchCount() const noexcept { return compensator_.getGlitchCount(); }
+
     /**
      * Configures target audio latency / buffer watermark in milliseconds.
      */

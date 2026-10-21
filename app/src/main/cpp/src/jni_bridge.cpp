@@ -47,10 +47,11 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
 
     // Constructor descriptor: (sampleRate: Int, channelCount: Int, bitDepth: Int,
     // totalPackets: Long, lostPackets: Long, jitterMs: Float, bufferOccupancy: Float,
-    // peakL: Float, peakR: Float) -> Void
-    g_telemetryCtor = env->GetMethodID(g_telemetryClass, "<init>", "(IIIJJFFFF)V");
+    // peakL: Float, peakR: Float, targetWatermarkMs: Float, unrecoverableDrops: Long,
+    // glitchCount: Long) -> Void
+    g_telemetryCtor = env->GetMethodID(g_telemetryClass, "<init>", "(IIIJJFFFFFJJ)V");
     if (!g_telemetryCtor) {
-        LOGE("JNI_OnLoad: Could not find NativeTelemetry constructor (IIIJJFFFF)V");
+        LOGE("JNI_OnLoad: Could not find NativeTelemetry constructor (IIIJJFFFFFJJ)V");
         env->DeleteGlobalRef(g_telemetryClass);
         g_telemetryClass = nullptr;
         return JNI_ERR;
@@ -164,7 +165,10 @@ Java_com_vban_receptor_native_NativeVbanEngine_getTelemetry(
         static_cast<jfloat>(telemetry.jitterMs),
         static_cast<jfloat>(telemetry.bufferOccupancyPercent),
         static_cast<jfloat>(telemetry.peakLevelLeft),
-        static_cast<jfloat>(telemetry.peakLevelRight)
+        static_cast<jfloat>(telemetry.peakLevelRight),
+        static_cast<jfloat>(telemetry.targetWatermarkMs),
+        static_cast<jlong>(telemetry.unrecoverableDrops),
+        static_cast<jlong>(telemetry.glitchCount)
     );
 }
 

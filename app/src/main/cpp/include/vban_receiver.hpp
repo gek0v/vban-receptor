@@ -45,6 +45,9 @@ struct NativeTelemetry {
     float    bufferOccupancyPercent{0.0f};
     float    peakLevelLeft{0.0f};
     float    peakLevelRight{0.0f};
+    float    targetWatermarkMs{0.0f};
+    uint64_t unrecoverableDrops{0};
+    uint64_t glitchCount{0};
 };
 
 /**

@@ -247,6 +247,10 @@ NativeTelemetry VbanEngine::getTelemetry() const noexcept {
     compensator_.setNetworkJitter(telem.jitterMs, static_cast<uint32_t>(burst));
     compensator_.setUnrecoverableDrops(telem.lostPackets);
 
+    telem.targetWatermarkMs = compensator_.getTargetWatermarkMs();
+    telem.unrecoverableDrops = compensator_.getUnrecoverableDrops();
+    telem.glitchCount = compensator_.getGlitchCount();
+
     return telem;
 }
 

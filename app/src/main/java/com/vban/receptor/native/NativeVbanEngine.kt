@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Immutable telemetry snapshot received from the native C++ VBAN engine.
  *
- * Parameters match exact JNI constructor signature: `(IIIJJFFFF)V`
+ * Parameters match exact JNI constructor signature: `(IIIJJFFFFFJJ)V`
  *
  * @property sampleRate Active sample rate in Hz (e.g. 48000, 96000, 192000, 768000).
  * @property channelCount Active channel count (1 to 8).
@@ -26,6 +26,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * @property bufferOccupancyPercent SPSC circular ring buffer watermark percentage [0.0f, 100.0f].
  * @property peakLevelLeft Linear audio peak amplitude for Left channel [0.0f, 1.0f].
  * @property peakLevelRight Linear audio peak amplitude for Right channel [0.0f, 1.0f].
+ * @property targetWatermarkMs Dynamic adaptive jitter target watermark in milliseconds.
+ * @property unrecoverableDrops Monotonic count of packets dropped or unrecoverable gaps.
+ * @property glitchCount Monotonic count of buffer underrun/glitch events.
  */
 data class NativeTelemetry(
     val sampleRate: Int = 0,
@@ -36,7 +39,10 @@ data class NativeTelemetry(
     val jitterMs: Float = 0.0f,
     val bufferOccupancyPercent: Float = 0.0f,
     val peakLevelLeft: Float = 0.0f,
-    val peakLevelRight: Float = 0.0f
+    val peakLevelRight: Float = 0.0f,
+    val targetWatermarkMs: Float = 0.0f,
+    val unrecoverableDrops: Long = 0L,
+    val glitchCount: Long = 0L
 ) {
     /**
      * Computed packet loss rate percentage [0.0%, 100.0%].
